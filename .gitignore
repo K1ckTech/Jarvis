@@ -1,0 +1,39 @@
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Credentials & API Keys
+oauth_config.json
+credentials.json
+token.json
+client_secret*.json
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# VS Code / IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# AI / Agents
+skills/
+.agents/
+prompt.md
+knowledge.md
+
+# Log files
+*.log
+logs/
+
+# SQLite databases
+*.sqlite3
+*.db

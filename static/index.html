@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JARVIS - Control Dashboard</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- Marked.js for Markdown parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        /* TailwindのリセットCSSに対するMarkdown用のスタイル補正 */
+        .markdown-body p { margin-bottom: 0.75em; }
+        .markdown-body p:last-child { margin-bottom: 0; }
+        .markdown-body ul { list-style-type: disc; padding-left: 1.5em; margin-bottom: 0.75em; }
+        .markdown-body ol { list-style-type: decimal; padding-left: 1.5em; margin-bottom: 0.75em; }
+        .markdown-body li { margin-bottom: 0.25em; }
+        .markdown-body strong { font-weight: 600; color: #f8fafc; }
+        .markdown-body a { color: #38bdf8; text-decoration: underline; }
+        .markdown-body code { background-color: rgba(0,0,0,0.3); padding: 0.2em 0.4em; border-radius: 0.25rem; font-size: 0.875em; font-family: monospace; }
+        .markdown-body pre { background-color: rgba(0,0,0,0.5); padding: 1em; border-radius: 0.5rem; overflow-x: auto; margin-bottom: 0.75em; }
+        .markdown-body pre code { background-color: transparent; padding: 0; font-size: 0.875em; }
+        .markdown-body h1, .markdown-body h2, .markdown-body h3 { font-weight: 600; color: #f8fafc; margin-top: 1em; margin-bottom: 0.5em; }
+        .markdown-body h1 { font-size: 1.5em; }
+        .markdown-body h2 { font-size: 1.25em; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.3em; }
+        .markdown-body h3 { font-size: 1.1em; }
+        .markdown-body blockquote { border-left: 4px solid #475569; padding-left: 1em; color: #cbd5e1; font-style: italic; margin-bottom: 0.75em; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans antialiased min-h-screen flex flex-col">
+    <!-- ヘッダー -->
+    <header class="border-b border-slate-800 bg-slate-900/50 backdrop-blur px-6 py-4 flex justify-between items-center">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+            <h1 class="text-lg font-semibold tracking-wide">JARVIS <span class="text-xs text-slate-400 font-normal">System Dashboard</span></h1>
+        </div>
+        <div class="text-xs text-slate-400 bg-slate-800 px-3 py-1.5 rounded border border-slate-700">
+            Status: <span id="system-status" class="text-emerald-400 font-medium">Online</span>
+        </div>
+    </header>
+
+    <!-- メインコンテンツ -->
+    <main class="flex-1 max-w-6xl w-full mx-auto p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+        <!-- 左側：コントロールパネル & クイックステータス -->
+        <div class="space-y-6">
+            <section class="bg-slate-900 border border-slate-800 rounded-lg p-5">
+                <h2 class="text-sm font-medium text-slate-300 uppercase tracking-wider mb-4">Core Modules</h2>
+                <ul class="space-y-3 text-sm">
+                    <li class="flex justify-between items-center py-2 border-b border-slate-800">
+                        <span class="text-slate-400">Voice Bridge (PJSIP)</span>
+                        <span class="text-emerald-400 text-xs px-2 py-0.5 bg-emerald-950/50 rounded border border-emerald-900">Active</span>
+                    </li>
+                    <li class="flex justify-between items-center py-2 border-b border-slate-800">
+                        <span class="text-slate-400">Gemini Engine</span>
+                        <span class="text-emerald-400 text-xs px-2 py-0.5 bg-emerald-950/50 rounded border border-emerald-900">gemini-3.8-flash</span>
+                    </li>
+                    <li class="flex justify-between items-center py-2 border-b border-slate-800">
+                        <span class="text-slate-400">Notion / Gmail Tools</span>
+                        <span class="text-emerald-400 text-xs px-2 py-0.5 bg-emerald-950/50 rounded border border-emerald-900">Active (LangGraph)</span>
+                    </li>
+                    <li class="flex justify-between items-center py-2">
+                        <span class="text-slate-400">Web Search Engine</span>
+                        <span class="text-emerald-400 text-xs px-2 py-0.5 bg-emerald-950/50 rounded border border-emerald-900">Active (DDGS)</span>
+                    </li>
+                </ul>
+            </section>
+            
+            <section class="bg-slate-900 border border-slate-800 rounded-lg p-5">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-sm font-medium text-slate-300 uppercase tracking-wider">Skill & Integrations</h2>
+                    <button class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded border border-slate-700 transition">Add New</button>
+                </div>
+                <div class="space-y-4 max-h-[300px] overflow-y-auto pr-2" id="integrations-list">
+                    <!-- GitHub -->
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-8 h-8 rounded bg-slate-800 flex items-center justify-center border border-slate-700">
+                                <svg class="w-4 h-4 text-slate-300" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd"/></svg>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-medium text-slate-200">GitHub</h3>
+                                <p class="text-xs text-slate-500">Repository & Code Mgmt</p>
+                            </div>
+                        </div>
+                        <button onclick="handleConnect(this, 'GitHub')" class="text-xs text-slate-400 hover:text-emerald-400 border border-slate-700 hover:border-emerald-500/50 bg-slate-950 px-3 py-1 rounded transition">Connect</button>
+                    </div>
+                    
+                    <!-- Google Drive -->
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-8 h-8 rounded bg-slate-800 flex items-center justify-center border border-slate-700">
+                                <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"></path></svg>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-medium text-slate-200">Google Drive</h3>
+                                <p class="text-xs text-slate-500">Files & Docs</p>
+                            </div>
+                        </div>
+                        <button onclick="handleConnect(this, 'Google Drive')" class="text-xs text-slate-400 hover:text-emerald-400 border border-slate-700 hover:border-emerald-500/50 bg-slate-950 px-3 py-1 rounded transition">Connect</button>
+                    </div>
+
+                    <!-- Stripe -->
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-8 h-8 rounded bg-slate-800 flex items-center justify-center border border-slate-700">
+                                <svg class="w-4 h-4 text-indigo-400" fill="currentColor" viewBox="0 0 24 24"><path d="M13.976 9.15c-2.172-.806-3.356-1.143-3.356-2.077 0-.806.741-1.463 1.95-1.463 2.146 0 3.86 1.054 3.86 1.054l1.344-3.553s-1.815-.97-4.475-.97c-3.791 0-6.14 1.996-6.14 4.887 0 2.219 1.487 3.535 4.542 4.453 2.453.743 3.109 1.353 3.109 2.247 0 .96-.867 1.636-2.316 1.636-2.617 0-4.52-1.393-4.52-1.393l-1.378 3.593s2.008 1.156 5.176 1.156c4.015 0 6.43-1.993 6.43-5.068 0-2.28-1.554-3.585-4.226-4.5z"/></svg>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-medium text-slate-200">Stripe</h3>
+                                <p class="text-xs text-slate-500">Payments & Billing</p>
+                            </div>
+                        </div>
+                        <button onclick="handleConnect(this, 'Stripe')" class="text-xs text-slate-400 hover:text-emerald-400 border border-slate-700 hover:border-emerald-500/50 bg-slate-950 px-3 py-1 rounded transition">Connect</button>
+                    </div>
+
+                    <!-- Slack -->
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-8 h-8 rounded bg-slate-800 flex items-center justify-center border border-slate-700">
+                                <span class="text-slate-300 font-bold text-xs">#</span>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-medium text-slate-200">Slack</h3>
+                                <p class="text-xs text-slate-500">Team Communication</p>
+                            </div>
+                        </div>
+                        <button onclick="handleConnect(this, 'Slack')" class="text-xs text-slate-400 hover:text-emerald-400 border border-slate-700 hover:border-emerald-500/50 bg-slate-950 px-3 py-1 rounded transition">Connect</button>
+                    </div>
+
+                    <!-- Google Calendar -->
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-8 h-8 rounded bg-slate-800 flex items-center justify-center border border-slate-700">
+                                <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-medium text-slate-200">Google Calendar</h3>
+                                <p class="text-xs text-slate-500">Scheduling</p>
+                            </div>
+                        </div>
+                        <button onclick="handleConnect(this, 'Google Calendar')" class="text-xs text-slate-400 hover:text-emerald-400 border border-slate-700 hover:border-emerald-500/50 bg-slate-950 px-3 py-1 rounded transition">Connect</button>
+                    </div>
+
+                    <!-- HubSpot (CRM) -->
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-8 h-8 rounded bg-slate-800 flex items-center justify-center border border-slate-700">
+                                <svg class="w-4 h-4 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-medium text-slate-200">HubSpot / CRM</h3>
+                                <p class="text-xs text-slate-500">Customer Management</p>
+                            </div>
+                        </div>
+                        <button onclick="handleConnect(this, 'HubSpot')" class="text-xs text-slate-400 hover:text-emerald-400 border border-slate-700 hover:border-emerald-500/50 bg-slate-950 px-3 py-1 rounded transition">Connect</button>
+                    </div>
+
+                    <!-- X (Twitter) -->
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-8 h-8 rounded bg-slate-800 flex items-center justify-center border border-slate-700">
+                                <span class="text-slate-300 font-bold text-sm">𝕏</span>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-medium text-slate-200">X (Twitter)</h3>
+                                <p class="text-xs text-slate-500">Marketing & PR</p>
+                            </div>
+                        </div>
+                        <button onclick="handleConnect(this, 'X (Twitter)')" class="text-xs text-slate-400 hover:text-emerald-400 border border-slate-700 hover:border-emerald-500/50 bg-slate-950 px-3 py-1 rounded transition">Connect</button>
+                    </div>
+                </div>
+            </section>
+        </div>
+        </div>
+
+        <!-- 右側：チャット・指示インターフェース -->
+        <div class="md:col-span-2 bg-slate-900 border border-slate-800 rounded-lg flex flex-col h-[650px]">
+            <div class="p-4 border-b border-slate-800">
+                <h2 class="text-sm font-medium text-slate-300">Command & Chat Interface</h2>
+            </div>
+            <!-- チャットログ表示エリア -->
+            <div id="chat-logs" class="flex-1 p-4 overflow-y-auto space-y-4 text-sm">
+                <div class="flex flex-col space-y-1">
+                    <span class="text-xs text-slate-500">JARVIS</span>
+                    <div class="bg-slate-800 text-slate-200 p-3 rounded-lg max-w-[80%] border border-slate-700/50 markdown-body">
+                        <p>システムダッシュボードへようこそ、ボス。何かご指示はありますか？</p>
+                    </div>
+                </div>
+            </div>
+            <!-- 入力フォーム -->
+            <div class="p-4 border-t border-slate-800 bg-slate-900/50">
+                <form id="chat-form" class="flex gap-3">
+                    <input type="text" id="user-input" placeholder="JARVISへ指示を入力..." class="flex-1 bg-slate-950 border border-slate-700 rounded px-4 py-2.5 text-sm focus:outline-none focus:border-slate-500 text-slate-100 placeholder-slate-500">
+                    <button type="submit" class="bg-slate-100 text-slate-950 font-medium px-5 py-2.5 rounded text-sm hover:bg-slate-200 transition-colors">送信</button>
+                </form>
+            </div>
+        </div>
+    </main>
+
+    <!-- OAuth設定モーダル -->
+    <div id="oauth-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center">
+        <div class="bg-slate-900 border border-slate-700 rounded-lg p-6 w-full max-w-md shadow-2xl">
+            <div class="flex justify-between items-center mb-5">
+                <h3 class="text-lg font-medium text-slate-200"><span id="oauth-provider-name">Provider</span> Setup</h3>
+                <button onclick="closeOauthModal()" class="text-slate-400 hover:text-slate-200">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <p id="oauth-instructions" class="text-xs text-slate-400 mb-5">連携のためには各プラットフォームの開発者ポータルでOAuthアプリを作成し、Client IDとClient Secretを取得する必要があります。</p>
+            <form id="oauth-form" class="space-y-4">
+                <input type="hidden" id="oauth-provider-id">
+                <div id="field-client-id-container">
+                    <label id="label-client-id" class="block text-xs text-slate-400 mb-1">Client ID</label>
+                    <input type="text" id="oauth-client-id" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500">
+                </div>
+                <div>
+                    <label id="label-client-secret" class="block text-xs text-slate-400 mb-1">Client Secret</label>
+                    <input type="password" id="oauth-client-secret" required class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500">
+                </div>
+                <div class="pt-2">
+                    <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2 rounded text-sm transition">認証情報を保存してログイン</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- JavaScript連携 -->
+    <script>
+        // markedのオプション設定
+        marked.setOptions({ breaks: true, gfm: true });
+
+        const chatForm = document.getElementById('chat-form');
+        const userInput = document.getElementById('user-input');
+        const chatLogs = document.getElementById('chat-logs');
+        const oauthModal = document.getElementById('oauth-modal');
+
+        // 初回ロード時に連携ステータスを取得する処理（モックから実APIへ変更）
+        document.addEventListener('DOMContentLoaded', () => {
+            const buttons = document.querySelectorAll('button[onclick^="handleConnect"]');
+            buttons.forEach(async (btn) => {
+                const provider = btn.getAttribute('onclick').match(/'([^']+)'/)[1];
+                try {
+                    const res = await fetch(`/api/oauth/status/${encodeURIComponent(provider)}`);
+                    const data = await res.json();
+                    if (data.connected) {
+                        setButtonConnected(btn);
+                    } else if (data.configured) {
+                        btn.textContent = 'Login';
+                    }
+                } catch(e) {}
+            });
+        });
+
+        async function handleConnect(btn, skillName) {
+            try {
+                // 状態確認
+                const res = await fetch(`/api/oauth/status/${encodeURIComponent(skillName)}`);
+                const data = await res.json();
+                
+                if (data.connected) {
+                    appendMessage('System', `${skillName} は既に連携済みです。`, 'system');
+                    return;
+                }
+                
+                if (!data.configured) {
+                    // 未設定ならモーダルを開く
+                    document.getElementById('oauth-provider-name').textContent = skillName;
+                    document.getElementById('oauth-provider-id').value = skillName;
+                    document.getElementById('oauth-client-id').value = '';
+                    document.getElementById('oauth-client-secret').value = '';
+                    
+                    const instructions = document.getElementById('oauth-instructions');
+                    const labelId = document.getElementById('label-client-id');
+                    const labelSecret = document.getElementById('label-client-secret');
+                    const fieldIdContainer = document.getElementById('field-client-id-container');
+                    const inputId = document.getElementById('oauth-client-id');
+                    
+                    if (skillName === 'GitHub') {
+                        instructions.innerHTML = 'GitHub App、またはPersonal Access Token (PAT)を利用します。<br>PATを利用する場合は上の欄は空欄で、下の欄にPATを入力してください。';
+                        labelId.textContent = 'App ID / Client ID (オプション)';
+                        labelSecret.textContent = 'Client Secret / PAT (必須)';
+                        inputId.required = false;
+                        fieldIdContainer.style.display = 'block';
+                    } else {
+                        instructions.innerHTML = '各プラットフォームの開発者ポータルでOAuthアプリを作成し、Client IDとClient Secretを取得してください。';
+                        labelId.textContent = 'Client ID';
+                        labelSecret.textContent = 'Client Secret';
+                        inputId.required = true;
+                        fieldIdContainer.style.display = 'block';
+                    }
+                    
+                    oauthModal.classList.remove('hidden');
+                } else {
+                    // 設定済みなら認証フローへリダイレクト（今回は簡易的にログイン完了状態にする）
+                    btn.textContent = 'Authorizing...';
+                    btn.classList.add('text-amber-400');
+                    // 実際はここで location.href = `/api/oauth/login/${skillName}` 等へ飛ばす
+                    setTimeout(() => {
+                        setButtonConnected(btn);
+                        appendMessage('System', `${skillName} のOAuth連携が完了し、ツールが利用可能になりました。`, 'system');
+                    }, 1000);
+                }
+            } catch (err) {
+                appendMessage('System', 'OAuthステータスの取得に失敗しました。', 'system');
+            }
+        }
+
+        function setButtonConnected(btn) {
+            btn.textContent = 'Connected';
+            btn.classList.remove('text-amber-400', 'border-amber-500/50', 'text-slate-400', 'hover:text-emerald-400');
+            btn.classList.add('text-emerald-400', 'border-emerald-500/50', 'bg-emerald-950/30');
+            btn.onclick = null;
+        }
+
+        function closeOauthModal() {
+            oauthModal.classList.add('hidden');
+        }
+
+        document.getElementById('oauth-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const provider = document.getElementById('oauth-provider-id').value;
+            const clientId = document.getElementById('oauth-client-id').value;
+            const clientSecret = document.getElementById('oauth-client-secret').value;
+            
+            try {
+                const res = await fetch('/api/oauth/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ provider, client_id: clientId, client_secret: clientSecret })
+                });
+                
+                if (res.ok) {
+                    closeOauthModal();
+                    // 本来はここでOAuth認可画面へリダイレクトする
+                    appendMessage('System', `${provider} の設定を保存しました。認可フローへ移行します...`, 'system');
+                    
+                    // ダミーの認可完了処理
+                    setTimeout(() => {
+                        const buttons = document.querySelectorAll('button[onclick^="handleConnect"]');
+                        buttons.forEach(btn => {
+                            if (btn.getAttribute('onclick').includes(provider)) {
+                                setButtonConnected(btn);
+                            }
+                        });
+                        appendMessage('System', `${provider} のOAuth連携が完了し、アクセス権を取得しました。`, 'system');
+                    }, 1500);
+                }
+            } catch (err) {
+                alert('保存に失敗しました。');
+            }
+        });
+
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const text = userInput.value.trim();
+            if (!text) return;
+
+            // ユーザーの入力を画面に追加
+            appendMessage('You', text, 'user');
+            userInput.value = '';
+
+            try {
+                // FastAPIのバックエンドAPIへ送信
+                const res = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: text })
+                });
+                const data = await res.json();
+                appendMessage('JARVIS', data.reply, 'jarvis');
+            } catch (err) {
+                appendMessage('System', '通信エラーが発生しました。', 'system');
+            }
+        });
+
+        function appendMessage(sender, text, type) {
+            const div = document.createElement('div');
+            div.className = "flex flex-col space-y-1";
+            
+            const isUser = type === 'user';
+            
+            // Markdownのパース処理 (ユーザーの入力はエスケープしてプレーンテキスト扱い)
+            let contentHTML = "";
+            if (isUser) {
+                const temp = document.createElement('div');
+                temp.textContent = text;
+                contentHTML = temp.innerHTML;
+            } else {
+                contentHTML = marked.parse(text);
+            }
+
+            div.innerHTML = `
+                <span class="text-xs text-slate-500 ${isUser ? 'text-right' : ''}">${sender}</span>
+                <div class="${isUser ? 'bg-slate-700 text-slate-100 self-end ml-auto' : 'bg-slate-800 text-slate-200 border border-slate-700/50 markdown-body'} p-3 rounded-lg max-w-[80%] overflow-x-auto">
+                    ${contentHTML}
+                </div>
+            `;
+            chatLogs.appendChild(div);
+            chatLogs.scrollTop = chatLogs.scrollHeight;
+        }
+    </script>
+</body>
+</html>
