@@ -4,6 +4,7 @@ import json
 import base64
 import requests
 import jwt # requires PyJWT
+import paramiko # requires paramiko
 from email.mime.text import MIMEText
 from langchain_core.tools import tool
 
@@ -308,9 +309,58 @@ def drive_upload_file(file_path: str, mime_type: str = "text/plain") -> str:
     except Exception as e:
         return f"アップロードエラー: {str(e)}"
 
+@tool
+def execute_ssh_command(hostname: str, username: str, command: str, password: str = None, key_filename: str = None, port: int = 22) -> str:
+    """指定されたSSHサーバに接続してコマンドを実行する"""
+    try:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(hostname=hostname, port=port, username=username, password=password, key_filename=key_filename)
+        stdin, stdout, stderr = client.exec_command(command)
+        output = stdout.read().decode('utf-8')
+        err_output = stderr.read().decode('utf-8')
+        client.close()
+        
+        res = "【標準出力】\n" + (output if output else "なし\n")
+        if err_output:
+            res += "\n【エラー出力】\n" + err_output
+        return f"成功: コマンドを実行しました。\n{res}"
+    except Exception as e:
+        return f"SSHコマンド実行エラー: {str(e)}"
+
+@tool
+def upload_file_ssh(hostname: str, username: str, local_path: str, remote_path: str, password: str = None, key_filename: str = None, port: int = 22) -> str:
+    """指定されたSSHサーバにファイルをアップロードする"""
+    try:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(hostname=hostname, port=port, username=username, password=password, key_filename=key_filename)
+        sftp = client.open_sftp()
+        sftp.put(local_path, remote_path)
+        sftp.close()
+        client.close()
+        return f"成功: ファイル '{local_path}' をリモートの '{remote_path}' にアップロードしました。"
+    except Exception as e:
+        return f"SSHアップロードエラー: {str(e)}"
+
+@tool
+def download_file_ssh(hostname: str, username: str, remote_path: str, local_path: str, password: str = None, key_filename: str = None, port: int = 22) -> str:
+    """指定されたSSHサーバからファイルをダウンロードする"""
+    try:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(hostname=hostname, port=port, username=username, password=password, key_filename=key_filename)
+        sftp = client.open_sftp()
+        sftp.get(remote_path, local_path)
+        sftp.close()
+        client.close()
+        return f"成功: リモートのファイル '{remote_path}' を '{local_path}' にダウンロードしました。"
+    except Exception as e:
+        return f"SSHダウンロードエラー: {str(e)}"
+
 tools = [
     notion_search, notion_create_page, notion_append_block, 
     search_recent_emails, get_email_details, send_email, create_email_draft,
     notify_boss_by_phone, web_search, read_knowledge, update_knowledge,
-    github_create_repo, drive_upload_file
+    github_create_repo, drive_upload_file, execute_ssh_command, upload_file_ssh, download_file_ssh
 ]

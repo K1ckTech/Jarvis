@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+requests
+PyJWT
+paramiko
+duckduckgo-search
+gTTS
+soundfile
+numpy
+scipy
+langchain-core
+langgraph
+langgraph-checkpoint-postgres
+langchain-google-genai
+psycopg[pool]
+python-multipart
