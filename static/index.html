@@ -25,6 +25,10 @@
         .markdown-body h2 { font-size: 1.25em; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.3em; }
         .markdown-body h3 { font-size: 1.1em; }
         .markdown-body blockquote { border-left: 4px solid #475569; padding-left: 1em; color: #cbd5e1; font-style: italic; margin-bottom: 0.75em; }
+
+        /* スキル連携一覧のスクロールバー非表示 */
+        #integrations-list::-webkit-scrollbar { display: none; }
+        #integrations-list { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
 <body class="bg-slate-950 text-slate-100 font-sans antialiased min-h-screen flex flex-col">
@@ -63,6 +67,14 @@
                         <span class="text-emerald-400 text-xs px-2 py-0.5 bg-emerald-950/50 rounded border border-emerald-900">Active (DDGS)</span>
                     </li>
                 </ul>
+            </section>
+            
+            <section class="bg-slate-900 border border-slate-800 rounded-lg p-5">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-sm font-medium text-slate-300 uppercase tracking-wider">Knowledge Base</h2>
+                    <button onclick="openKnowledgeModal()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded border border-slate-700 transition">Edit</button>
+                </div>
+                <p class="text-xs text-slate-500">SSH鍵やサーバー情報など、AIの開発・行動に必要な前提知識を管理します。</p>
             </section>
             
             <section class="bg-slate-900 border border-slate-800 rounded-lg p-5">
@@ -175,8 +187,9 @@
 
         <!-- 右側：チャット・指示インターフェース -->
         <div class="md:col-span-2 bg-slate-900 border border-slate-800 rounded-lg flex flex-col h-[650px]">
-            <div class="p-4 border-b border-slate-800">
+            <div class="p-4 border-b border-slate-800 flex justify-between items-center">
                 <h2 class="text-sm font-medium text-slate-300">Command & Chat Interface</h2>
+                <button onclick="clearUIHistory()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 px-2 py-1 rounded border border-slate-700 transition" title="画面上の履歴のみをクリア（記憶は保持されます）">Clear UI</button>
             </div>
             <!-- チャットログ表示エリア -->
             <div id="chat-logs" class="flex-1 p-4 overflow-y-auto space-y-4 text-sm">
@@ -189,9 +202,10 @@
             </div>
             <!-- 入力フォーム -->
             <div class="p-4 border-t border-slate-800 bg-slate-900/50">
-                <form id="chat-form" class="flex gap-3">
-                    <input type="text" id="user-input" placeholder="JARVISへ指示を入力..." class="flex-1 bg-slate-950 border border-slate-700 rounded px-4 py-2.5 text-sm focus:outline-none focus:border-slate-500 text-slate-100 placeholder-slate-500">
-                    <button type="submit" class="bg-slate-100 text-slate-950 font-medium px-5 py-2.5 rounded text-sm hover:bg-slate-200 transition-colors">送信</button>
+                <form id="chat-form" class="flex gap-3 items-end">
+                    <textarea id="user-input" placeholder="JARVISへ指示を入力... (Shift+Enterで改行)" rows="1" class="flex-1 bg-slate-950 border border-slate-700 rounded px-4 py-2.5 text-sm focus:outline-none focus:border-slate-500 text-slate-100 placeholder-slate-500 resize-none max-h-32" style="min-height: 42px;" oninput="this.style.height = 'auto'; this.style.height = this.scrollHeight + 'px'"></textarea>
+                    <button type="button" id="stop-btn" onclick="stopProcessing()" class="hidden bg-red-600/80 text-white font-medium px-5 py-2.5 rounded text-sm hover:bg-red-500 transition-colors h-[42px]">停止</button>
+                    <button type="submit" class="bg-slate-100 text-slate-950 font-medium px-5 py-2.5 rounded text-sm hover:bg-slate-200 transition-colors h-[42px]">送信</button>
                 </form>
             </div>
         </div>
@@ -224,6 +238,24 @@
         </div>
     </div>
 
+    <!-- Knowledge Base設定モーダル -->
+    <div id="knowledge-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center">
+        <div class="bg-slate-900 border border-slate-700 rounded-lg p-6 w-full max-w-2xl shadow-2xl flex flex-col h-[80vh]">
+            <div class="flex justify-between items-center mb-5">
+                <h3 class="text-lg font-medium text-slate-200">Knowledge Base</h3>
+                <button onclick="closeKnowledgeModal()" class="text-slate-400 hover:text-slate-200">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <p class="text-xs text-slate-400 mb-3">ここに記述した内容はAIの前提知識（SSH接続情報、各種キー等）として利用されます。</p>
+            <textarea id="knowledge-content" class="flex-1 w-full bg-slate-950 border border-slate-700 rounded p-4 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 font-mono resize-none"></textarea>
+            <div class="pt-4 flex justify-end gap-3">
+                <button onclick="closeKnowledgeModal()" class="px-4 py-2 bg-slate-800 text-slate-300 rounded text-sm hover:bg-slate-700 transition">キャンセル</button>
+                <button onclick="saveKnowledge()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded text-sm transition">保存する</button>
+            </div>
+        </div>
+    </div>
+
     <!-- JavaScript連携 -->
     <script>
         // markedのオプション設定
@@ -233,6 +265,35 @@
         const userInput = document.getElementById('user-input');
         const chatLogs = document.getElementById('chat-logs');
         const oauthModal = document.getElementById('oauth-modal');
+        const knowledgeModal = document.getElementById('knowledge-modal');
+        const knowledgeContent = document.getElementById('knowledge-content');
+
+        let currentAbortController = null;
+
+        function stopProcessing() {
+            if (currentAbortController) {
+                currentAbortController.abort();
+                currentAbortController = null;
+                appendMessage('System', '処理を中断しました。', 'system');
+                document.getElementById('stop-btn').classList.add('hidden');
+            }
+        }
+
+        userInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                chatForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+            }
+        });
+
+        function editMessage(btn) {
+            const messageDiv = btn.closest('.group');
+            const textContent = messageDiv.querySelector('.msg-content').textContent;
+            userInput.value = textContent;
+            userInput.style.height = 'auto';
+            userInput.style.height = userInput.scrollHeight + 'px';
+            userInput.focus();
+        }
 
         // 初回ロード時に連携ステータスを取得する処理（モックから実APIへ変更）
         document.addEventListener('DOMContentLoaded', () => {
@@ -249,7 +310,87 @@
                     }
                 } catch(e) {}
             });
+            
+            // チャット履歴の復元
+            loadChatHistory();
         });
+
+        const defaultChatLogHTML = `
+                <div class="flex flex-col space-y-1">
+                    <span class="text-xs text-slate-500">JARVIS</span>
+                    <div class="bg-slate-800 text-slate-200 p-3 rounded-lg max-w-[80%] border border-slate-700/50 markdown-body">
+                        <p>システムダッシュボードへようこそ、ボス。何かご指示はありますか？</p>
+                    </div>
+                </div>`;
+
+        function saveChatHistory() {
+            // Backend handles history automatically.
+        }
+
+        async function loadChatHistory() {
+            try {
+                const res = await fetch('/api/chat/history/jarvis_main_thread');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.history && data.history.length > 0) {
+                        chatLogs.innerHTML = '';
+                        data.history.forEach(h => {
+                            appendMessage(h.sender, h.text, h.type, false);
+                        });
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to load history", e);
+            }
+        }
+
+        async function clearUIHistory() {
+            chatLogs.innerHTML = defaultChatLogHTML;
+            try {
+                await fetch('/api/chat/clear_ui', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ thread_id: 'jarvis_main_thread' })
+                });
+            } catch (e) {
+                console.error("Failed to clear UI on backend", e);
+            }
+        }
+
+        async function openKnowledgeModal() {
+            try {
+                const res = await fetch('/api/knowledge');
+                if (res.ok) {
+                    const data = await res.json();
+                    knowledgeContent.value = data.content || '';
+                }
+            } catch (e) {
+                console.error("Failed to fetch knowledge", e);
+            }
+            knowledgeModal.classList.remove('hidden');
+        }
+
+        function closeKnowledgeModal() {
+            knowledgeModal.classList.add('hidden');
+        }
+
+        async function saveKnowledge() {
+            try {
+                const res = await fetch('/api/knowledge', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: knowledgeContent.value })
+                });
+                if (res.ok) {
+                    closeKnowledgeModal();
+                    appendMessage('System', 'Knowledge Baseを更新しました。', 'system');
+                } else {
+                    alert('保存に失敗しました。');
+                }
+            } catch (e) {
+                alert('エラーが発生しました。');
+            }
+        }
 
         async function handleConnect(btn, skillName) {
             try {
@@ -358,41 +499,57 @@
             // ユーザーの入力を画面に追加
             appendMessage('You', text, 'user');
             userInput.value = '';
+            userInput.style.height = 'auto';
+
+            const stopBtn = document.getElementById('stop-btn');
+            stopBtn.classList.remove('hidden');
+            currentAbortController = new AbortController();
 
             try {
                 // FastAPIのバックエンドAPIへ送信
                 const res = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: text })
+                    body: JSON.stringify({ message: text }),
+                    signal: currentAbortController.signal
                 });
                 const data = await res.json();
                 appendMessage('JARVIS', data.reply, 'jarvis');
             } catch (err) {
-                appendMessage('System', '通信エラーが発生しました。', 'system');
+                if (err.name === 'AbortError') {
+                    // 停止処理済みのため何もしない
+                } else {
+                    appendMessage('System', '通信エラーが発生しました。', 'system');
+                }
+            } finally {
+                stopBtn.classList.add('hidden');
+                currentAbortController = null;
             }
         });
 
-        function appendMessage(sender, text, type) {
+        function appendMessage(sender, text, type, save=true) {
             const div = document.createElement('div');
-            div.className = "flex flex-col space-y-1";
+            div.className = "flex flex-col space-y-1 group";
             
             const isUser = type === 'user';
             
             // Markdownのパース処理 (ユーザーの入力はエスケープしてプレーンテキスト扱い)
             let contentHTML = "";
+            let editHTML = "";
             if (isUser) {
                 const temp = document.createElement('div');
                 temp.textContent = text;
-                contentHTML = temp.innerHTML;
+                contentHTML = `<div class="msg-content whitespace-pre-wrap">${temp.innerHTML}</div>`;
+                editHTML = `<button onclick="editMessage(this)" class="absolute top-1 right-2 opacity-0 group-hover:opacity-100 text-xs text-slate-300 hover:text-white bg-slate-600/80 rounded px-2 py-1 transition-opacity">編集</button>`;
             } else {
                 contentHTML = marked.parse(text);
             }
 
             div.innerHTML = `
                 <span class="text-xs text-slate-500 ${isUser ? 'text-right' : ''}">${sender}</span>
-                <div class="${isUser ? 'bg-slate-700 text-slate-100 self-end ml-auto' : 'bg-slate-800 text-slate-200 border border-slate-700/50 markdown-body'} p-3 rounded-lg max-w-[80%] overflow-x-auto">
+                <div class="${isUser ? 'bg-slate-700 text-slate-100 self-end ml-auto relative' : 'bg-slate-800 text-slate-200 border border-slate-700/50 markdown-body'} p-3 rounded-lg max-w-[80%] overflow-x-auto">
                     ${contentHTML}
+                    ${editHTML}
                 </div>
             `;
             chatLogs.appendChild(div);

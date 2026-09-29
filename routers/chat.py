@@ -5,7 +5,7 @@ from models.schemas import ChatRequest, ChatClearRequest
 
 router = APIRouter()
 
-@router.post("/")
+@router.post("")
 def chat_endpoint(req: ChatRequest, request: Request):
     app_graph = request.app.state.app_graph
     
@@ -46,5 +46,45 @@ def clear_chat_history(req: ChatClearRequest, request: Request):
             conn.execute("DELETE FROM checkpoint_blobs WHERE thread_id = %s", (req.thread_id,))
             conn.execute("DELETE FROM checkpoint_writes WHERE thread_id = %s", (req.thread_id,))
         return {"status": "success", "message": "チャット履歴を完全に消去しました。"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/history/{thread_id}")
+def get_chat_history(thread_id: str, request: Request):
+    app_graph = request.app.state.app_graph
+    config = {"configurable": {"thread_id": thread_id}}
+    
+    try:
+        state = app_graph.get_state(config)
+    except Exception:
+        return {"history": []}
+        
+    messages = state.values.get("messages", [])
+    
+    history = []
+    for m in messages:
+        if m.type == "human":
+            if m.content == "[UI_CLEAR]":
+                history = []
+            else:
+                history.append({"sender": "You", "text": m.content, "type": "user"})
+        elif m.type == "ai":
+            text = ""
+            if isinstance(m.content, list):
+                text = "".join(block.get("text", "") for block in m.content if isinstance(block, dict) and block.get("type") == "text")
+            else:
+                text = m.content
+            if text:
+                history.append({"sender": "JARVIS", "text": text, "type": "jarvis"})
+            
+    return {"history": history}
+
+@router.post("/clear_ui")
+def clear_ui(req: ChatClearRequest, request: Request):
+    app_graph = request.app.state.app_graph
+    config = {"configurable": {"thread_id": req.thread_id}}
+    try:
+        app_graph.update_state(config, {"messages": [HumanMessage(content="[UI_CLEAR]")]})
+        return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

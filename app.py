@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse
 from psycopg_pool import ConnectionPool
 
 from langchain_core.messages import SystemMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, MessagesState, START
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -13,9 +14,9 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 
 from core.config import DB_URI, SYSTEM_PROMPT
 from tools.agent_tools import tools
-from routers import chat, oauth
+from routers import chat, oauth, knowledge
 
-def call_model(state: MessagesState, config: dict):
+def call_model(state: MessagesState, config: RunnableConfig):
     messages = state["messages"]
     if not messages or not isinstance(messages[0], SystemMessage):
         messages = [SystemMessage(content=SYSTEM_PROMPT)] + messages
@@ -25,7 +26,8 @@ def call_model(state: MessagesState, config: dict):
     llm = ChatGoogleGenerativeAI(model=model_name, temperature=0)
     llm_with_tools = llm.bind_tools(tools)
     
-    response = llm_with_tools.invoke(messages)
+    filtered_messages = [m for m in messages if m.content != "[UI_CLEAR]"]
+    response = llm_with_tools.invoke(filtered_messages)
     return {"messages": [response]}
 
 workflow = StateGraph(MessagesState)
@@ -64,6 +66,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.include_router(chat.router, prefix="/api/chat")
 app.include_router(oauth.router, prefix="/api/oauth")
+app.include_router(knowledge.router, prefix="/api/knowledge")
 
 @app.get("/")
 def read_root():

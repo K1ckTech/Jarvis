@@ -14,3 +14,4 @@ langgraph-checkpoint-postgres
 langchain-google-genai
 psycopg[pool]
 python-multipart
+python-dotenv

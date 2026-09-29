@@ -5,12 +5,14 @@ import base64
 import requests
 import jwt # requires PyJWT
 import paramiko # requires paramiko
+import tempfile
 from email.mime.text import MIMEText
 from langchain_core.tools import tool
 
 from core.config import (
     NOTION_API_KEY, NOTION_VERSION, GMAIL_ACCESS_TOKEN,
-    GITHUB_APP_ID, GITHUB_PRIVATE_KEY_PATH
+    GITHUB_APP_ID, GITHUB_PRIVATE_KEY_PATH,
+    DISCORD_WEBHOOK_URL, DISCORD_USER_ID
 )
 
 def _get_notion_headers():
@@ -234,6 +236,38 @@ def notify_boss_by_phone(reason: str) -> str:
     except Exception as e:
         return f"電話発信エラー: {str(e)}"
 
+@tool
+def notify_boss(level: str, reason: str) -> str:
+    """重要度に応じてボスに報告や通知を行う。levelは 'low', 'medium', 'high' のいずれか。"""
+    if level == "high":
+        # 緊急時は電話をかける
+        return notify_boss_by_phone(reason)
+    
+    elif level == "medium":
+        # 中レベル: Discordへメンション付きで通知
+        if not DISCORD_WEBHOOK_URL:
+            return "Discord Webhookが設定されていません。"
+        mention = f"<@{DISCORD_USER_ID}> " if DISCORD_USER_ID else "@here "
+        payload = {"content": f"{mention} **【通知: 中レベル】**\n{reason}"}
+        try:
+            requests.post(DISCORD_WEBHOOK_URL, json=payload)
+            return "成功: Discordでメンション付き通知を送信しました。"
+        except Exception as e:
+            return f"Discord通知エラー: {str(e)}"
+            
+    elif level == "low":
+        # 低レベル: Discordへ通知（メンションなし）
+        if not DISCORD_WEBHOOK_URL:
+            return "Discord Webhookが設定されていません。"
+        payload = {"content": f"**【通知: 低レベル】**\n{reason}"}
+        try:
+            requests.post(DISCORD_WEBHOOK_URL, json=payload)
+            return "成功: Discordで通知（メンションなし）を送信しました。"
+        except Exception as e:
+            return f"Discord通知エラー: {str(e)}"
+            
+    return "無効なレベルが指定されました。"
+
 def _get_github_app_token() -> str:
     """Generate a JWT and get an installation token for GitHub App"""
     if not GITHUB_APP_ID or not GITHUB_PRIVATE_KEY_PATH:
@@ -310,13 +344,20 @@ def drive_upload_file(file_path: str, mime_type: str = "text/plain") -> str:
         return f"アップロードエラー: {str(e)}"
 
 @tool
-def execute_ssh_command(hostname: str, username: str, command: str, password: str = None, key_filename: str = None, port: int = 22) -> str:
+def execute_ssh_command(hostname: str, username: str, command: str, password: str = None, key_filename: str = None, key_content: str = None, port: int = 22) -> str:
     """指定されたSSHサーバに接続してコマンドを実行する"""
+    temp_key_path = None
+    if key_content:
+        fd, temp_key_path = tempfile.mkstemp(text=True)
+        with os.fdopen(fd, 'w') as f:
+            f.write(key_content)
+        key_filename = temp_key_path
+
     try:
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        client.connect(hostname=hostname, port=port, username=username, password=password, key_filename=key_filename)
-        stdin, stdout, stderr = client.exec_command(command)
+        client.connect(hostname=hostname, port=port, username=username, password=password, key_filename=key_filename, timeout=15)
+        stdin, stdout, stderr = client.exec_command(command, timeout=30)
         output = stdout.read().decode('utf-8')
         err_output = stderr.read().decode('utf-8')
         client.close()
@@ -327,14 +368,24 @@ def execute_ssh_command(hostname: str, username: str, command: str, password: st
         return f"成功: コマンドを実行しました。\n{res}"
     except Exception as e:
         return f"SSHコマンド実行エラー: {str(e)}"
+    finally:
+        if temp_key_path and os.path.exists(temp_key_path):
+            os.remove(temp_key_path)
 
 @tool
-def upload_file_ssh(hostname: str, username: str, local_path: str, remote_path: str, password: str = None, key_filename: str = None, port: int = 22) -> str:
+def upload_file_ssh(hostname: str, username: str, local_path: str, remote_path: str, password: str = None, key_filename: str = None, key_content: str = None, port: int = 22) -> str:
     """指定されたSSHサーバにファイルをアップロードする"""
+    temp_key_path = None
+    if key_content:
+        fd, temp_key_path = tempfile.mkstemp(text=True)
+        with os.fdopen(fd, 'w') as f:
+            f.write(key_content)
+        key_filename = temp_key_path
+
     try:
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        client.connect(hostname=hostname, port=port, username=username, password=password, key_filename=key_filename)
+        client.connect(hostname=hostname, port=port, username=username, password=password, key_filename=key_filename, timeout=15)
         sftp = client.open_sftp()
         sftp.put(local_path, remote_path)
         sftp.close()
@@ -342,14 +393,24 @@ def upload_file_ssh(hostname: str, username: str, local_path: str, remote_path: 
         return f"成功: ファイル '{local_path}' をリモートの '{remote_path}' にアップロードしました。"
     except Exception as e:
         return f"SSHアップロードエラー: {str(e)}"
+    finally:
+        if temp_key_path and os.path.exists(temp_key_path):
+            os.remove(temp_key_path)
 
 @tool
-def download_file_ssh(hostname: str, username: str, remote_path: str, local_path: str, password: str = None, key_filename: str = None, port: int = 22) -> str:
+def download_file_ssh(hostname: str, username: str, remote_path: str, local_path: str, password: str = None, key_filename: str = None, key_content: str = None, port: int = 22) -> str:
     """指定されたSSHサーバからファイルをダウンロードする"""
+    temp_key_path = None
+    if key_content:
+        fd, temp_key_path = tempfile.mkstemp(text=True)
+        with os.fdopen(fd, 'w') as f:
+            f.write(key_content)
+        key_filename = temp_key_path
+
     try:
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        client.connect(hostname=hostname, port=port, username=username, password=password, key_filename=key_filename)
+        client.connect(hostname=hostname, port=port, username=username, password=password, key_filename=key_filename, timeout=15)
         sftp = client.open_sftp()
         sftp.get(remote_path, local_path)
         sftp.close()
@@ -357,10 +418,15 @@ def download_file_ssh(hostname: str, username: str, remote_path: str, local_path
         return f"成功: リモートのファイル '{remote_path}' を '{local_path}' にダウンロードしました。"
     except Exception as e:
         return f"SSHダウンロードエラー: {str(e)}"
+    finally:
+        if temp_key_path and os.path.exists(temp_key_path):
+            os.remove(temp_key_path)
+
+
 
 tools = [
     notion_search, notion_create_page, notion_append_block, 
     search_recent_emails, get_email_details, send_email, create_email_draft,
-    notify_boss_by_phone, web_search, read_knowledge, update_knowledge,
+    notify_boss_by_phone, notify_boss, web_search, read_knowledge, update_knowledge,
     github_create_repo, drive_upload_file, execute_ssh_command, upload_file_ssh, download_file_ssh
 ]
