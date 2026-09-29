@@ -269,6 +269,14 @@
         const knowledgeContent = document.getElementById('knowledge-content');
 
         let currentAbortController = null;
+        let pollingInterval = null;
+        let currentHistoryCount = -1;
+
+        function startPolling() {
+            if (!pollingInterval) {
+                pollingInterval = setInterval(loadChatHistory, 3000);
+            }
+        }
 
         function stopProcessing() {
             if (currentAbortController) {
@@ -311,8 +319,9 @@
                 } catch(e) {}
             });
             
-            // チャット履歴の復元
+            // チャット履歴の復元とポーリング開始
             loadChatHistory();
+            startPolling();
         });
 
         const defaultChatLogHTML = `
@@ -332,11 +341,16 @@
                 const res = await fetch('/api/chat/history/jarvis_main_thread');
                 if (res.ok) {
                     const data = await res.json();
-                    if (data.history && data.history.length > 0) {
+                    if (data.history && data.history.length !== currentHistoryCount) {
+                        currentHistoryCount = data.history.length;
                         chatLogs.innerHTML = '';
-                        data.history.forEach(h => {
-                            appendMessage(h.sender, h.text, h.type, false);
-                        });
+                        if (data.history.length === 0) {
+                            chatLogs.innerHTML = defaultChatLogHTML;
+                        } else {
+                            data.history.forEach(h => {
+                                appendMessage(h.sender, h.text, h.type, false);
+                            });
+                        }
                     }
                 }
             } catch (e) {
@@ -506,34 +520,24 @@
             const text = userInput.value.trim();
             if (!text) return;
 
-            // ユーザーの入力を画面に追加
-            appendMessage('You', text, 'user');
             userInput.value = '';
             userInput.style.height = 'auto';
 
             const stopBtn = document.getElementById('stop-btn');
             stopBtn.classList.remove('hidden');
-            currentAbortController = new AbortController();
 
             try {
-                // FastAPIのバックエンドAPIへ送信
-                const res = await fetch('/api/chat', {
+                // FastAPIのバックエンドAPIへ送信 (非同期で処理されるため即座に戻る)
+                await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: text }),
-                    signal: currentAbortController.signal
+                    body: JSON.stringify({ message: text, thread_id: 'jarvis_main_thread' })
                 });
-                const data = await res.json();
-                appendMessage('JARVIS', data.reply, 'jarvis');
+                // 画面更新はポーリング (loadChatHistory) に任せる
             } catch (err) {
-                if (err.name === 'AbortError') {
-                    // 停止処理済みのため何もしない
-                } else {
-                    appendMessage('System', '通信エラーが発生しました。', 'system');
-                }
+                appendMessage('System', '通信エラーが発生しました。', 'system');
             } finally {
                 stopBtn.classList.add('hidden');
-                currentAbortController = null;
             }
         });
 

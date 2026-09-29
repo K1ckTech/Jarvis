@@ -1,38 +1,33 @@
 import time
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
 from langchain_core.messages import HumanMessage
 from models.schemas import ChatRequest, ChatClearRequest
 
 router = APIRouter()
 
-@router.post("")
-def chat_endpoint(req: ChatRequest, request: Request):
-    app_graph = request.app.state.app_graph
-    
-    config = {"configurable": {"thread_id": req.thread_id, "model_name": req.model}}
-    max_retries = 3
-    base_delay = 10
-    
+def _process_chat(app_graph, req_message: str, config: dict, max_retries: int = 3, base_delay: int = 10):
     for attempt in range(max_retries):
         try:
-            result = app_graph.invoke({"messages": [HumanMessage(content=req.message)]}, config)
-            content = result['messages'][-1].content
-            
-            if isinstance(content, list):
-                text = "".join(block.get("text", "") for block in content if isinstance(block, dict) and block.get("type") == "text")
-            else:
-                text = content
-                
-            return {"reply": text}
+            app_graph.invoke({"messages": [HumanMessage(content=req_message)]}, config)
+            return
         except Exception as e:
             err_str = str(e)
             if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
                 if attempt < max_retries - 1:
                     time.sleep(base_delay * (2 ** attempt))
                     continue
-            return {"reply": f"エラーが発生しました: {err_str}"}
+            return
 
-    return {"reply": "エラー: レートリミット制限により処理を完了できませんでした。"}
+@router.post("")
+def chat_endpoint(req: ChatRequest, request: Request, background_tasks: BackgroundTasks):
+    app_graph = request.app.state.app_graph
+    
+    config = {"configurable": {"thread_id": req.thread_id, "model_name": req.model}}
+    
+    # Cloudflare等のタイムアウトを防ぐため、処理はバックグラウンドに回して即座にレスポンスを返す
+    background_tasks.add_task(_process_chat, app_graph, req.message, config)
+    
+    return {"reply": "", "status": "processing"}
 
 @router.post("/clear")
 def clear_chat_history(req: ChatClearRequest, request: Request):
