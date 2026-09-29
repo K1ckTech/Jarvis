@@ -8,6 +8,7 @@ SCOPES = [
 ]
 
 def main():
+    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
     if not os.path.exists('credentials.json'):
         print("エラー: credentials.json が見つかりません。")
         return

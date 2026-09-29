@@ -308,7 +308,6 @@ def _get_github_app_token() -> str:
 def github_create_repo(repo_name: str, private: bool = True, description: str = "") -> str:
     """GitHubに新しいリポジトリを作成する (GitHub App または PAT)"""
     try:
-        # Fallback to App Auth if PAT is not in oauth_config
         token = None
         if os.path.exists("oauth_config.json"):
             with open("oauth_config.json", "r") as f:
@@ -332,6 +331,78 @@ def github_create_repo(repo_name: str, private: bool = True, description: str = 
         return f"GitHub作成エラー: {res.status_code} - {res.text}"
     except Exception as e:
         return f"エラー: {str(e)}"
+
+def _get_github_headers():
+    token = None
+    if os.path.exists("oauth_config.json"):
+        with open("oauth_config.json", "r") as f:
+            data = json.load(f)
+        token = data.get("GitHub", {}).get("access_token")
+    if not token:
+        token = _get_github_app_token()
+    return {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+
+@tool
+def github_create_issue(repo: str, title: str, body: str) -> str:
+    """指定したリポジトリ(例: 'K1ckTech/Jarvis')に新しいIssueを作成する"""
+    try:
+        headers = _get_github_headers()
+        url = f"https://api.github.com/repos/{repo}/issues"
+        payload = {"title": title, "body": body}
+        res = requests.post(url, json=payload, headers=headers)
+        if res.status_code == 201:
+            return f"成功: Issueを作成しました (URL: {res.json().get('html_url')})"
+        return f"Issue作成エラー: {res.status_code} - {res.text}"
+    except Exception as e:
+        return f"エラー: {str(e)}"
+
+@tool
+def github_read_repo_file(repo: str, file_path: str, branch: str = "main") -> str:
+    """指定したリポジトリ内のファイルを読み込む"""
+    try:
+        headers = _get_github_headers()
+        url = f"https://api.github.com/repos/{repo}/contents/{file_path}?ref={branch}"
+        res = requests.get(url, headers=headers)
+        if res.status_code == 200:
+            content = res.json().get("content", "")
+            return base64.b64decode(content).decode('utf-8')
+        return f"ファイル読み込みエラー: {res.status_code} - {res.text}"
+    except Exception as e:
+        return f"エラー: {str(e)}"
+
+@tool
+def github_commit_file(repo: str, file_path: str, content: str, commit_message: str, branch: str = "main") -> str:
+    """指定したリポジトリのファイルを作成または更新（コミット）する。"""
+    try:
+        headers = _get_github_headers()
+        url = f"https://api.github.com/repos/{repo}/contents/{file_path}"
+        
+        # 既存ファイルのSHAを取得（更新の場合必須）
+        sha = None
+        get_res = requests.get(f"{url}?ref={branch}", headers=headers)
+        if get_res.status_code == 200:
+            sha = get_res.json().get("sha")
+            
+        payload = {
+            "message": commit_message,
+            "content": base64.b64encode(content.encode('utf-8')).decode('utf-8'),
+            "branch": branch
+        }
+        if sha:
+            payload["sha"] = sha
+            
+        res = requests.put(url, json=payload, headers=headers)
+        if res.status_code in [200, 201]:
+            action = "更新" if sha else "作成"
+            return f"成功: ファイルを{action}しました (URL: {res.json().get('content', {}).get('html_url')})"
+        return f"コミットエラー: {res.status_code} - {res.text}"
+    except Exception as e:
+        return f"エラー: {str(e)}"
+
+# --- Google Drive Tools ---
 
 @tool
 def drive_upload_file(file_path: str, mime_type: str = "text/plain") -> str:
@@ -423,10 +494,224 @@ def download_file_ssh(hostname: str, username: str, remote_path: str, local_path
             os.remove(temp_key_path)
 
 
+@tool
+def drive_list_files(query: str = "") -> str:
+    """Google Drive上のファイルを検索・一覧表示する"""
+    return f"Google Driveのファイル検索要求を受け付けました。検索クエリ: '{query}' (現在OAuth2コールバックリスナーの実装待ちです)"
+
+@tool
+def drive_create_folder(folder_name: str) -> str:
+    """Google Driveに新しいフォルダを作成する"""
+    return f"Google Driveのフォルダ作成要求を受け付けました。フォルダ名: '{folder_name}' (現在OAuth2コールバックリスナーの実装待ちです)"
+
+# --- Stripe Tools ---
+
+def _get_stripe_key() -> str:
+    if os.path.exists("oauth_config.json"):
+        with open("oauth_config.json", "r") as f:
+            data = json.load(f)
+        return data.get("Stripe", {}).get("access_token", "")
+    return ""
+
+@tool
+def stripe_create_customer(name: str, email: str) -> str:
+    """Stripeに新しい顧客を登録する。"""
+    try:
+        api_key = _get_stripe_key()
+        if not api_key:
+            return "StripeのAPIキーが設定されていません。ダッシュボードから設定してください。"
+        headers = {"Authorization": f"Bearer {api_key}"}
+        payload = {"name": name, "email": email}
+        res = requests.post("https://api.stripe.com/v1/customers", data=payload, headers=headers)
+        if res.status_code == 200:
+            return f"成功: Stripe顧客を登録しました。 Customer ID: {res.json().get('id')}"
+        return f"Stripeエラー: {res.status_code} - {res.text}"
+    except Exception as e:
+        return f"エラー: {str(e)}"
+
+@tool
+def stripe_create_invoice(customer_id: str, amount: int, currency: str = "jpy", description: str = "") -> str:
+    """Stripeで指定した顧客に対して請求書(Invoice ItemとInvoice)を作成する。"""
+    try:
+        api_key = _get_stripe_key()
+        if not api_key:
+            return "StripeのAPIキーが設定されていません。"
+        headers = {"Authorization": f"Bearer {api_key}"}
+        
+        # 1. Invoice Itemの作成
+        item_payload = {
+            "customer": customer_id,
+            "amount": amount,
+            "currency": currency,
+            "description": description
+        }
+        res_item = requests.post("https://api.stripe.com/v1/invoiceitems", data=item_payload, headers=headers)
+        if res_item.status_code != 200:
+            return f"Stripe InvoiceItemエラー: {res_item.status_code} - {res_item.text}"
+            
+        # 2. Invoiceの作成
+        inv_payload = {"customer": customer_id, "auto_advance": "true"}
+        res_inv = requests.post("https://api.stripe.com/v1/invoices", data=inv_payload, headers=headers)
+        if res_inv.status_code == 200:
+            return f"成功: 請求書を作成しました。 Invoice ID: {res_inv.json().get('id')} (URL: {res_inv.json().get('hosted_invoice_url')})"
+        return f"Stripe Invoiceエラー: {res_inv.status_code} - {res_inv.text}"
+    except Exception as e:
+        return f"エラー: {str(e)}"
+
+# --- 自主保守（Autonomous Self-Maintenance）用ツール ---
+
+@tool
+def read_local_file(file_path: str) -> str:
+    """ローカル（サーバー上）のファイル内容を読み込む。自分自身のコード(app.pyなど)の確認に使用する。"""
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception as e:
+        return f"ファイル読み込みエラー: {str(e)}"
+
+@tool
+def write_local_file(file_path: str, content: str) -> str:
+    """ローカル（サーバー上）のファイルに内容を書き込む（上書き）。自分自身のコードの修正や、新規スクリプトの作成に使用する。"""
+    try:
+        # バックアップの作成
+        if os.path.exists(file_path):
+            with open(f"{file_path}.bak", "w", encoding="utf-8") as backup:
+                with open(file_path, "r", encoding="utf-8") as orig:
+                    backup.write(orig.read())
+                    
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return f"成功: ファイル '{file_path}' に書き込みました。（バックアップは .bak として保存済み）"
+    except Exception as e:
+        return f"ファイル書き込みエラー: {str(e)}"
+
+@tool
+def run_shell_command(command: str) -> str:
+    """サーバー上でシェルコマンドを実行し、結果（標準出力・標準エラー）を返す。Dockerの起動やGit操作、パッケージのインストールなどシステム保守に使用する。"""
+    import subprocess
+    try:
+        result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=60)
+        output = f"Return Code: {result.returncode}\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        return output
+    except subprocess.TimeoutExpired:
+        return "エラー: コマンドの実行がタイムアウト（60秒）しました。"
+    except Exception as e:
+        return f"コマンド実行エラー: {str(e)}"
+
+# --- Slack Tools ---
+def _get_slack_token() -> str:
+    if os.path.exists("oauth_config.json"):
+        with open("oauth_config.json", "r") as f:
+            return json.load(f).get("Slack", {}).get("access_token", "")
+    return ""
+
+@tool
+def slack_send_message(channel: str, text: str) -> str:
+    """Slackの指定チャンネル(例: '#general')にメッセージを送信する"""
+    try:
+        token = _get_slack_token()
+        if not token:
+            return "Slackのトークンが設定されていません。"
+        
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        payload = {"channel": channel, "text": text}
+        res = requests.post("https://slack.com/api/chat.postMessage", json=payload, headers=headers)
+        if res.json().get("ok"):
+            return f"成功: Slackチャンネル {channel} にメッセージを送信しました。"
+        return f"Slack送信エラー: {res.text}"
+    except Exception as e:
+        return f"エラー: {str(e)}"
+
+# --- Google Calendar Tools ---
+def _get_gcal_token() -> str:
+    if os.path.exists("oauth_config.json"):
+        with open("oauth_config.json", "r") as f:
+            return json.load(f).get("Google Calendar", {}).get("access_token", "")
+    return ""
+
+@tool
+def calendar_create_event(summary: str, start_datetime: str, end_datetime: str) -> str:
+    """Google Calendarに予定を作成する。日時は 'YYYY-MM-DDTHH:MM:SS+09:00' の形式で指定すること。"""
+    try:
+        token = _get_gcal_token()
+        if not token:
+            return "Google Calendarのトークンが設定されていません。"
+        
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        payload = {
+            "summary": summary,
+            "start": {"dateTime": start_datetime},
+            "end": {"dateTime": end_datetime}
+        }
+        res = requests.post("https://www.googleapis.com/calendar/v3/calendars/primary/events", json=payload, headers=headers)
+        if res.status_code == 200:
+            return f"成功: Googleカレンダーに予定「{summary}」を追加しました。"
+        return f"Google Calendarエラー: {res.status_code} - {res.text}"
+    except Exception as e:
+        return f"エラー: {str(e)}"
+
+# --- HubSpot (CRM) Tools ---
+def _get_hubspot_token() -> str:
+    if os.path.exists("oauth_config.json"):
+        with open("oauth_config.json", "r") as f:
+            return json.load(f).get("HubSpot", {}).get("access_token", "")
+    return ""
+
+@tool
+def hubspot_create_contact(email: str, firstname: str, lastname: str) -> str:
+    """HubSpot CRMに新規顧客(コンタクト)を作成する"""
+    try:
+        token = _get_hubspot_token()
+        if not token:
+            return "HubSpotのトークンが設定されていません。"
+        
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        payload = {
+            "properties": {
+                "email": email,
+                "firstname": firstname,
+                "lastname": lastname
+            }
+        }
+        res = requests.post("https://api.hubapi.com/crm/v3/objects/contacts", json=payload, headers=headers)
+        if res.status_code in [200, 201]:
+            return f"成功: HubSpotに顧客 {firstname} {lastname} ({email}) を登録しました。"
+        return f"HubSpotエラー: {res.status_code} - {res.text}"
+    except Exception as e:
+        return f"エラー: {str(e)}"
+
+# --- X (Twitter) Tools ---
+def _get_twitter_token() -> str:
+    if os.path.exists("oauth_config.json"):
+        with open("oauth_config.json", "r") as f:
+            return json.load(f).get("X (Twitter)", {}).get("access_token", "")
+    return ""
+
+@tool
+def twitter_post_tweet(text: str) -> str:
+    """X (Twitter)にツイートを投稿する"""
+    try:
+        token = _get_twitter_token()
+        if not token:
+            return "X (Twitter)のトークンが設定されていません。"
+        
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        payload = {"text": text}
+        res = requests.post("https://api.twitter.com/2/tweets", json=payload, headers=headers)
+        if res.status_code in [200, 201]:
+            return "成功: ツイートを投稿しました。"
+        return f"Twitterエラー: {res.status_code} - {res.text}"
+    except Exception as e:
+        return f"エラー: {str(e)}"
 
 tools = [
     notion_search, notion_create_page, notion_append_block, 
     search_recent_emails, get_email_details, send_email, create_email_draft,
     notify_boss_by_phone, notify_boss, web_search, read_knowledge, update_knowledge,
-    github_create_repo, drive_upload_file, execute_ssh_command, upload_file_ssh, download_file_ssh
+    github_create_repo, github_create_issue, github_read_repo_file, github_commit_file,
+    drive_upload_file, drive_list_files, drive_create_folder,
+    execute_ssh_command, upload_file_ssh, download_file_ssh,
+    stripe_create_customer, stripe_create_invoice,
+    slack_send_message, calendar_create_event, hubspot_create_contact, twitter_post_tweet,
+    read_local_file, write_local_file, run_shell_command
 ]
