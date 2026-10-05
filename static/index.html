@@ -384,6 +384,14 @@
         }
 
         let currentAbortController = null;
+        let pollingInterval = null;
+        let currentHistoryCount = -1;
+
+        function startPolling() {
+            if (!pollingInterval) {
+                pollingInterval = setInterval(loadChatHistory, 3000);
+            }
+        }
 
         function stopProcessing() {
             if (currentAbortController) {
@@ -520,8 +528,9 @@
                 } catch(e) {}
             });
             
-            // チャット履歴の復元
+            // チャット履歴の復元とポーリング開始
             loadChatHistory();
+            startPolling();
         });
 
         const defaultChatLogHTML = `
@@ -541,11 +550,16 @@
                 const res = await fetch('/api/chat/history/jarvis_main_thread');
                 if (res.ok) {
                     const data = await res.json();
-                    if (data.history && data.history.length > 0) {
+                    if (data.history && data.history.length !== currentHistoryCount) {
+                        currentHistoryCount = data.history.length;
                         chatLogs.innerHTML = '';
-                        data.history.forEach(h => {
-                            appendMessage(h.sender, h.text, h.type, false);
-                        });
+                        if (data.history.length === 0) {
+                            chatLogs.innerHTML = defaultChatLogHTML;
+                        } else {
+                            data.history.forEach(h => {
+                                appendMessage(h.sender, h.text, h.type, false);
+                            });
+                        }
                     }
                 }
             } catch (e) {
@@ -608,7 +622,17 @@
                 const data = await res.json();
                 
                 if (data.connected) {
-                    appendMessage('System', `${skillName} は既に連携済みです。`, 'system');
+                    if (confirm(`${skillName} は既に連携されています。連携を解除して再設定しますか？`)) {
+                        const disconnectRes = await fetch(`/api/oauth/disconnect/${encodeURIComponent(skillName)}`, { method: 'POST' });
+                        if (disconnectRes.ok) {
+                            btn.textContent = 'Connect';
+                            btn.classList.remove('text-emerald-400', 'border-emerald-500/50', 'bg-emerald-950/30');
+                            btn.classList.add('text-slate-400', 'hover:text-emerald-400', 'border-slate-700', 'hover:border-emerald-500/50', 'bg-slate-950');
+                            appendMessage('System', `${skillName} の連携を解除しました。`, 'system');
+                        } else {
+                            alert('連携解除に失敗しました。');
+                        }
+                    }
                     return;
                 }
                 
@@ -657,9 +681,9 @@
 
         function setButtonConnected(btn) {
             btn.textContent = 'Connected';
-            btn.classList.remove('text-amber-400', 'border-amber-500/50', 'text-slate-400', 'hover:text-emerald-400');
+            btn.classList.remove('text-amber-400', 'border-amber-500/50', 'text-slate-400', 'hover:text-emerald-400', 'border-slate-700', 'hover:border-emerald-500/50', 'bg-slate-950');
             btn.classList.add('text-emerald-400', 'border-emerald-500/50', 'bg-emerald-950/30');
-            btn.onclick = null;
+            // btn.onclick = null; は解除のためにコメントアウトしてクリックを有効化したままにする
         }
 
         function closeOauthModal() {
@@ -705,14 +729,11 @@
             const text = userInput.value.trim();
             if (!text) return;
 
-            // ユーザーの入力を画面に追加
-            appendMessage('You', text, 'user');
             userInput.value = '';
             userInput.style.height = 'auto';
 
             const stopBtn = document.getElementById('stop-btn');
             stopBtn.classList.remove('hidden');
-            currentAbortController = new AbortController();
 
             try {
                 // LLM設定の取得
@@ -736,14 +757,9 @@
                 const data = await res.json();
                 appendMessage('JARVIS', data.reply, 'jarvis');
             } catch (err) {
-                if (err.name === 'AbortError') {
-                    // 停止処理済みのため何もしない
-                } else {
-                    appendMessage('System', '通信エラーが発生しました。', 'system');
-                }
+                appendMessage('System', '通信エラーが発生しました。', 'system');
             } finally {
                 stopBtn.classList.add('hidden');
-                currentAbortController = null;
             }
         });
 

@@ -308,7 +308,6 @@ def _get_github_app_token() -> str:
 def github_create_repo(repo_name: str, private: bool = True, description: str = "") -> str:
     """GitHubに新しいリポジトリを作成する (GitHub App または PAT)"""
     try:
-        # Fallback to App Auth if PAT is not in oauth_config
         token = None
         if os.path.exists("oauth_config.json"):
             with open("oauth_config.json", "r") as f:
@@ -332,6 +331,78 @@ def github_create_repo(repo_name: str, private: bool = True, description: str = 
         return f"GitHub作成エラー: {res.status_code} - {res.text}"
     except Exception as e:
         return f"エラー: {str(e)}"
+
+def _get_github_headers():
+    token = None
+    if os.path.exists("oauth_config.json"):
+        with open("oauth_config.json", "r") as f:
+            data = json.load(f)
+        token = data.get("GitHub", {}).get("access_token")
+    if not token:
+        token = _get_github_app_token()
+    return {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+
+@tool
+def github_create_issue(repo: str, title: str, body: str) -> str:
+    """指定したリポジトリ(例: 'K1ckTech/Jarvis')に新しいIssueを作成する"""
+    try:
+        headers = _get_github_headers()
+        url = f"https://api.github.com/repos/{repo}/issues"
+        payload = {"title": title, "body": body}
+        res = requests.post(url, json=payload, headers=headers)
+        if res.status_code == 201:
+            return f"成功: Issueを作成しました (URL: {res.json().get('html_url')})"
+        return f"Issue作成エラー: {res.status_code} - {res.text}"
+    except Exception as e:
+        return f"エラー: {str(e)}"
+
+@tool
+def github_read_repo_file(repo: str, file_path: str, branch: str = "main") -> str:
+    """指定したリポジトリ内のファイルを読み込む"""
+    try:
+        headers = _get_github_headers()
+        url = f"https://api.github.com/repos/{repo}/contents/{file_path}?ref={branch}"
+        res = requests.get(url, headers=headers)
+        if res.status_code == 200:
+            content = res.json().get("content", "")
+            return base64.b64decode(content).decode('utf-8')
+        return f"ファイル読み込みエラー: {res.status_code} - {res.text}"
+    except Exception as e:
+        return f"エラー: {str(e)}"
+
+@tool
+def github_commit_file(repo: str, file_path: str, content: str, commit_message: str, branch: str = "main") -> str:
+    """指定したリポジトリのファイルを作成または更新（コミット）する。"""
+    try:
+        headers = _get_github_headers()
+        url = f"https://api.github.com/repos/{repo}/contents/{file_path}"
+        
+        # 既存ファイルのSHAを取得（更新の場合必須）
+        sha = None
+        get_res = requests.get(f"{url}?ref={branch}", headers=headers)
+        if get_res.status_code == 200:
+            sha = get_res.json().get("sha")
+            
+        payload = {
+            "message": commit_message,
+            "content": base64.b64encode(content.encode('utf-8')).decode('utf-8'),
+            "branch": branch
+        }
+        if sha:
+            payload["sha"] = sha
+            
+        res = requests.put(url, json=payload, headers=headers)
+        if res.status_code in [200, 201]:
+            action = "更新" if sha else "作成"
+            return f"成功: ファイルを{action}しました (URL: {res.json().get('content', {}).get('html_url')})"
+        return f"コミットエラー: {res.status_code} - {res.text}"
+    except Exception as e:
+        return f"エラー: {str(e)}"
+
+# --- Google Drive Tools ---
 
 @tool
 def drive_upload_file(file_path: str, mime_type: str = "text/plain") -> str:

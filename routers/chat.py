@@ -1,5 +1,5 @@
 import time
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
 from langchain_core.messages import HumanMessage
 from models.schemas import ChatRequest, ChatClearRequest, PingLLMRequest
 

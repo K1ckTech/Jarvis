@@ -32,3 +32,14 @@ def save_oauth_config(config: OAuthConfig):
     with open("oauth_config.json", "w") as f:
         json.dump(data, f)
     return {"status": "success"}
+
+@router.post('/disconnect/{provider}')
+def disconnect_oauth(provider: str):
+    if os.path.exists('oauth_config.json'):
+        with open('oauth_config.json', 'r') as f:
+            data = json.load(f)
+        if provider in data:
+            del data[provider]
+            with open('oauth_config.json', 'w') as f:
+                json.dump(data, f)
+    return {'status': 'success'}

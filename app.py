@@ -1,11 +1,11 @@
 import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from psycopg_pool import AsyncConnectionPool
 
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, MessagesState, START
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -23,6 +23,7 @@ async def call_model(state: MessagesState, config: RunnableConfig):
     if not messages or not isinstance(messages[0], SystemMessage):
         messages = [SystemMessage(content=SYSTEM_PROMPT)] + messages
         
+    config = config or {}
     model_name = config.get("configurable", {}).get("model_name", "gemini-3.5-flash")
     provider = config.get("configurable", {}).get("provider", "gemini")
     base_url = config.get("configurable", {}).get("base_url", "")
@@ -67,6 +68,26 @@ workflow.add_edge("tools", "agent")
 pool = None
 app_graph = None
 
+import asyncio
+
+async def autonomous_agent_loop(graph, pool):
+    """JARVISがプロンプト無しに自律的に活動するためのバックグラウンドループ"""
+    while True:
+        try:
+            # 1時間(3600秒)おきに起動し、自律的に思考・行動する
+            await asyncio.sleep(3600)
+            print("[Agentic Loop] JARVIS is waking up for autonomous tasks...")
+            
+            config = {"configurable": {"thread_id": "jarvis_autonomous_thread", "model_name": "gemini-3.5-flash"}}
+            trigger_msg = HumanMessage(content="[システム自動トリガー] 自主保守(Self-Maintenance)、未読メール確認、GitHub等の新着課題の確認を自律的に行ってください。何らかの問題や重要な通知があれば notify_boss_by_phone または Slack等で報告してください。異常がなければ何もせず待機してください。")
+            
+            await asyncio.to_thread(graph.invoke, {"messages": [trigger_msg]}, config)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"[Agentic Loop Error] {e}")
+            await asyncio.sleep(60)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global pool, app_graph
@@ -81,13 +102,30 @@ async def lifespan(app: FastAPI):
     app.state.db_pool = pool
     app.state.app_graph = app_graph
     
+    # 自律行動ループを起動
+    loop_task = asyncio.create_task(autonomous_agent_loop(app_graph, pool))
+    
     print("JARVIS STARTER API Server is ONLINE.")
     yield
+    
+    loop_task.cancel()
     if pool:
         await pool.close()
     print("JARVIS STARTER API Server is OFFLINE.")
 
 app = FastAPI(lifespan=lifespan)
+
+@app.middleware("http")
+async def ip_restriction_middleware(request: Request, call_next):
+    client_ip = request.client.host
+    # Cloudflare Tunnelからのアクセス(172.18.0.1)のみ許可
+    if client_ip != "172.18.0.1":
+        return JSONResponse(
+            status_code=403, 
+            content={"detail": "Forbidden: Access restricted."}
+        )
+    return await call_next(request)
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.include_router(chat.router, prefix="/api/chat")
