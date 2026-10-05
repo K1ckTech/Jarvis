@@ -1,21 +1,37 @@
 import time
 from fastapi import APIRouter, Request, HTTPException
 from langchain_core.messages import HumanMessage
-from models.schemas import ChatRequest, ChatClearRequest
+from models.schemas import ChatRequest, ChatClearRequest, PingLLMRequest
 
 router = APIRouter()
 
+from fastapi.responses import StreamingResponse
+import json
+import asyncio
+
 @router.post("")
-def chat_endpoint(req: ChatRequest, request: Request):
+async def chat_endpoint(req: ChatRequest, request: Request):
     app_graph = request.app.state.app_graph
     
-    config = {"configurable": {"thread_id": req.thread_id, "model_name": req.model}}
-    max_retries = 3
-    base_delay = 10
+    config = {
+        "configurable": {
+            "thread_id": req.thread_id, 
+            "model_name": req.model,
+            "provider": req.provider,
+            "base_url": req.base_url
+        }
+    }
     
-    for attempt in range(max_retries):
+    async def generate_response():
+        task = asyncio.create_task(app_graph.ainvoke({"messages": [HumanMessage(content=req.message)]}, config))
+        
+        # Keep-alive heartbeat to prevent timeouts
+        while not task.done():
+            yield b" "
+            await asyncio.sleep(5)
+            
         try:
-            result = app_graph.invoke({"messages": [HumanMessage(content=req.message)]}, config)
+            result = task.result()
             content = result['messages'][-1].content
             
             if isinstance(content, list):
@@ -23,39 +39,35 @@ def chat_endpoint(req: ChatRequest, request: Request):
             else:
                 text = content
                 
-            return {"reply": text}
+            yield json.dumps({"reply": text}).encode('utf-8')
         except Exception as e:
-            err_str = str(e)
-            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                if attempt < max_retries - 1:
-                    time.sleep(base_delay * (2 ** attempt))
-                    continue
-            return {"reply": f"エラーが発生しました: {err_str}"}
+            yield json.dumps({"reply": f"エラーが発生しました: {str(e)}"}).encode('utf-8')
 
-    return {"reply": "エラー: レートリミット制限により処理を完了できませんでした。"}
+    return StreamingResponse(generate_response(), media_type="application/json")
+
 
 @router.post("/clear")
-def clear_chat_history(req: ChatClearRequest, request: Request):
+async def clear_chat_history(req: ChatClearRequest, request: Request):
     pool = request.app.state.db_pool
     if not pool:
         return {"status": "success", "message": "DBが無効のためメモリ上の履歴をリセットしました（再起動で消去されます）。"}
     
     try:
-        with pool.connection() as conn:
-            conn.execute("DELETE FROM checkpoints WHERE thread_id = %s", (req.thread_id,))
-            conn.execute("DELETE FROM checkpoint_blobs WHERE thread_id = %s", (req.thread_id,))
-            conn.execute("DELETE FROM checkpoint_writes WHERE thread_id = %s", (req.thread_id,))
+        async with pool.connection() as conn:
+            await conn.execute("DELETE FROM checkpoints WHERE thread_id = %s", (req.thread_id,))
+            await conn.execute("DELETE FROM checkpoint_blobs WHERE thread_id = %s", (req.thread_id,))
+            await conn.execute("DELETE FROM checkpoint_writes WHERE thread_id = %s", (req.thread_id,))
         return {"status": "success", "message": "チャット履歴を完全に消去しました。"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/history/{thread_id}")
-def get_chat_history(thread_id: str, request: Request):
+async def get_chat_history(thread_id: str, request: Request):
     app_graph = request.app.state.app_graph
     config = {"configurable": {"thread_id": thread_id}}
     
     try:
-        state = app_graph.get_state(config)
+        state = await app_graph.aget_state(config)
     except Exception:
         return {"history": []}
         
@@ -80,11 +92,30 @@ def get_chat_history(thread_id: str, request: Request):
     return {"history": history}
 
 @router.post("/clear_ui")
-def clear_ui(req: ChatClearRequest, request: Request):
+async def clear_ui(req: ChatClearRequest, request: Request):
     app_graph = request.app.state.app_graph
     config = {"configurable": {"thread_id": req.thread_id}}
     try:
-        app_graph.update_state(config, {"messages": [HumanMessage(content="[UI_CLEAR]")]})
+        await app_graph.aupdate_state(config, {"messages": [HumanMessage(content="[UI_CLEAR]")]})
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/ping_llm")
+def ping_llm(req: PingLLMRequest):
+    try:
+        if req.provider == "openai":
+            from langchain_openai import ChatOpenAI
+            import os
+            api_key = os.getenv("LOCAL_LLM_KEY", "dummy")
+            url = req.base_url if req.base_url else os.getenv("LOCAL_LLM_URL", "http://localhost:8000/v1")
+            llm = ChatOpenAI(model=req.model, base_url=url, api_key=api_key, max_retries=1)
+            llm.invoke("Hi")
+        else:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            llm = ChatGoogleGenerativeAI(model=req.model, max_retries=1)
+            llm.invoke("Hi")
+            
+        return {"status": "success"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}

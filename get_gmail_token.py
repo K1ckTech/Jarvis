@@ -1,6 +1,8 @@
 import os
 from google_auth_oauthlib.flow import InstalledAppFlow
 
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+
 SCOPES = [
     'https://www.googleapis.com/auth/gmail.readonly',
     'https://www.googleapis.com/auth/gmail.send',
@@ -44,6 +46,10 @@ def main():
 
     with open('token.txt', 'w') as token_file:
         token_file.write(creds.token)
+
+    # 自動更新スクリプト用にリフレッシュトークンを含む情報を保存
+    with open('token.json', 'w') as json_file:
+        json_file.write(creds.to_json())
     print("\nAccess Tokenを token.txt に保存しました。")
 
 if __name__ == '__main__':

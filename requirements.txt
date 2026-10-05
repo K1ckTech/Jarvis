@@ -12,6 +12,12 @@ langchain-core
 langgraph
 langgraph-checkpoint-postgres
 langchain-google-genai
+langchain-openai
+langchain-ollama
 psycopg[pool]
 python-multipart
 python-dotenv
+langchain-ollama
+playwright
+beautifulsoup4
+lxml

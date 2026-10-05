@@ -2,8 +2,16 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>JARVIS - Control Dashboard</title>
+    <!-- iOS WebClip & PWA -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="JARVIS">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#020617">
+    
     <!-- Tailwind CSS -->
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <!-- Marked.js for Markdown parsing -->
@@ -38,35 +46,47 @@
             <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
             <h1 class="text-lg font-semibold tracking-wide">JARVIS <span class="text-xs text-slate-400 font-normal">System Dashboard</span></h1>
         </div>
-        <div class="text-xs text-slate-400 bg-slate-800 px-3 py-1.5 rounded border border-slate-700">
-            Status: <span id="system-status" class="text-emerald-400 font-medium">Online</span>
+        <div class="flex items-center space-x-3">
+            <button onclick="openSettingsModal()" class="text-slate-400 hover:text-emerald-400 p-1.5 bg-slate-800 rounded border border-slate-700 transition" title="System Settings">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            </button>
+            <div class="text-xs text-slate-400 bg-slate-800 px-3 py-1.5 rounded border border-slate-700">
+                Status: <span id="system-status" class="text-emerald-400 font-medium">Online</span>
+            </div>
         </div>
     </header>
 
     <!-- メインコンテンツ -->
-    <main class="flex-1 max-w-6xl w-full mx-auto p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+    <main class="flex-1 max-w-6xl w-full mx-auto p-3 md:p-6 grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
         <!-- 左側：コントロールパネル & クイックステータス -->
-        <div class="space-y-6">
+        <div class="space-y-6 order-2 md:order-1 pb-10 md:pb-0">
             <section class="bg-slate-900 border border-slate-800 rounded-lg p-5">
-                <h2 class="text-sm font-medium text-slate-300 uppercase tracking-wider mb-4">Core Modules</h2>
-                <ul class="space-y-3 text-sm">
-                    <li class="flex justify-between items-center py-2 border-b border-slate-800">
-                        <span class="text-slate-400">Voice Bridge (PJSIP)</span>
-                        <span class="text-emerald-400 text-xs px-2 py-0.5 bg-emerald-950/50 rounded border border-emerald-900">Active</span>
-                    </li>
-                    <li class="flex justify-between items-center py-2 border-b border-slate-800">
-                        <span class="text-slate-400">Gemini Engine</span>
-                        <span class="text-emerald-400 text-xs px-2 py-0.5 bg-emerald-950/50 rounded border border-emerald-900">gemini-3.8-flash</span>
-                    </li>
-                    <li class="flex justify-between items-center py-2 border-b border-slate-800">
-                        <span class="text-slate-400">Notion / Gmail Tools</span>
-                        <span class="text-emerald-400 text-xs px-2 py-0.5 bg-emerald-950/50 rounded border border-emerald-900">Active (LangGraph)</span>
-                    </li>
-                    <li class="flex justify-between items-center py-2">
-                        <span class="text-slate-400">Web Search Engine</span>
-                        <span class="text-emerald-400 text-xs px-2 py-0.5 bg-emerald-950/50 rounded border border-emerald-900">Active (DDGS)</span>
-                    </li>
-                </ul>
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-sm font-medium text-slate-300 uppercase tracking-wider">LLM Configuration</h2>
+                    <span id="llm-status-badge" class="text-slate-400 text-xs px-2 py-0.5 bg-slate-800 rounded border border-slate-700">Unverified</span>
+                </div>
+                
+                <div class="flex p-1 bg-slate-950 border border-slate-800 rounded-lg mb-4">
+                    <button id="btn-provider-gemini" type="button" onclick="setProviderUI('gemini')" class="flex-1 py-1.5 text-xs font-medium rounded-md bg-slate-800 text-slate-200 shadow-sm border border-slate-700 transition-all">Google Gemini</button>
+                    <button id="btn-provider-openai" type="button" onclick="setProviderUI('openai')" class="flex-1 py-1.5 text-xs font-medium rounded-md text-slate-500 hover:text-slate-300 transition-all">Local LLM</button>
+                </div>
+                <input type="hidden" id="llm-provider" value="gemini">
+
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Model Name</label>
+                        <input type="text" id="llm-model" value="gemini-3.5-flash" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500" oninput="markUnverified()">
+                    </div>
+                    <div id="llm-base-url-container" class="hidden">
+                        <label class="block text-xs text-slate-400 mb-1">Base URL</label>
+                        <input type="text" id="llm-base-url" value="http://host.docker.internal:8000/v1" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500" oninput="markUnverified()">
+                    </div>
+                    
+                    <button type="button" onclick="verifyLlmConnection()" id="btn-verify-llm" class="w-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs py-2 rounded transition-colors flex justify-center items-center gap-2 mt-2">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                        Apply & Verify
+                    </button>
+                </div>
             </section>
             
             <section class="bg-slate-900 border border-slate-800 rounded-lg p-5">
@@ -186,7 +206,7 @@
         </div>
 
         <!-- 右側：チャット・指示インターフェース -->
-        <div class="md:col-span-2 bg-slate-900 border border-slate-800 rounded-lg flex flex-col h-[650px]">
+        <div class="md:col-span-2 bg-slate-900 border border-slate-800 rounded-lg flex flex-col h-[calc(100dvh-100px)] md:h-[650px] order-1 md:order-2">
             <div class="p-4 border-b border-slate-800 flex justify-between items-center">
                 <h2 class="text-sm font-medium text-slate-300">Command & Chat Interface</h2>
                 <button onclick="clearUIHistory()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 px-2 py-1 rounded border border-slate-700 transition" title="画面上の履歴のみをクリア（記憶は保持されます）">Clear UI</button>
@@ -256,6 +276,29 @@
         </div>
     </div>
 
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 w-11/12 max-w-2xl shadow-2xl flex flex-col max-h-[85vh]">
+            <div class="flex justify-between items-center mb-4 pb-3 border-b border-slate-800">
+                <h3 class="text-lg font-medium text-slate-200">System Variables (.env)</h3>
+                <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-slate-200">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <p class="text-xs text-slate-400 mb-3">.envファイルの内容です。システムの全ての環境変数・APIキーをここで一元管理できます。空にすると削除されます。</p>
+            <div id="settings-content" class="flex-1 overflow-y-auto space-y-3 pr-2">
+                <!-- Javascript will populate this -->
+            </div>
+            <div class="pt-4 flex justify-between gap-3 border-t border-slate-800 mt-4">
+                <button onclick="addSettingField()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-sm transition">+ Add Row</button>
+                <div class="flex gap-3">
+                    <button onclick="closeSettingsModal()" class="px-4 py-2 bg-slate-800 text-slate-300 rounded text-sm hover:bg-slate-700 transition">Cancel</button>
+                    <button onclick="saveSettings()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded text-sm transition">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- JavaScript連携 -->
     <script>
         // markedのオプション設定
@@ -267,6 +310,78 @@
         const oauthModal = document.getElementById('oauth-modal');
         const knowledgeModal = document.getElementById('knowledge-modal');
         const knowledgeContent = document.getElementById('knowledge-content');
+        
+        const settingsModal = document.getElementById('settings-modal');
+        const settingsContent = document.getElementById('settings-content');
+
+        async function openSettingsModal() {
+            settingsModal.classList.remove('hidden');
+            try {
+                const res = await fetch('/api/settings');
+                const data = await res.json();
+                renderSettings(data.settings);
+            } catch(e) {
+                console.error(e);
+            }
+        }
+
+        function closeSettingsModal() {
+            settingsModal.classList.add('hidden');
+        }
+
+        function renderSettings(settings) {
+            settingsContent.innerHTML = '';
+            let hasItems = false;
+            for (const [key, value] of Object.entries(settings || {})) {
+                appendSettingRow(key, value);
+                hasItems = true;
+            }
+            if (!hasItems) {
+                appendSettingRow('', '');
+            }
+        }
+
+        function appendSettingRow(key, value) {
+            const row = document.createElement('div');
+            row.className = "flex gap-2 items-center";
+            row.innerHTML = `
+                <input type="text" placeholder="KEY" value="${key}" class="w-1/3 bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 setting-key">
+                <input type="text" placeholder="VALUE" value="${value}" class="flex-1 bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 setting-value">
+                <button onclick="this.parentElement.remove()" class="text-slate-500 hover:text-red-400 p-2"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+            `;
+            settingsContent.appendChild(row);
+        }
+
+        function addSettingField() {
+            appendSettingRow('', '');
+            settingsContent.scrollTop = settingsContent.scrollHeight;
+        }
+
+        async function saveSettings() {
+            const keys = document.querySelectorAll('.setting-key');
+            const values = document.querySelectorAll('.setting-value');
+            const newSettings = {};
+            keys.forEach((kInput, idx) => {
+                const k = kInput.value.trim();
+                const v = values[idx].value.trim();
+                if (k) newSettings[k] = v;
+            });
+            try {
+                const res = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ settings: newSettings })
+                });
+                if(res.ok) {
+                    closeSettingsModal();
+                    alert("設定を保存しました。");
+                } else {
+                    alert("保存に失敗しました。");
+                }
+            } catch(e) {
+                alert("通信エラーが発生しました。");
+            }
+        }
 
         let currentAbortController = null;
 
@@ -277,6 +392,98 @@
                 appendMessage('System', '処理を中断しました。', 'system');
                 document.getElementById('stop-btn').classList.add('hidden');
             }
+        }
+
+        function markUnverified() {
+            const badge = document.getElementById('llm-status-badge');
+            badge.className = "text-slate-400 text-xs px-2 py-0.5 bg-slate-800 rounded border border-slate-700";
+            badge.textContent = "Unverified";
+            saveLlmConfig();
+        }
+
+        function setProviderUI(provider) {
+            document.getElementById('llm-provider').value = provider;
+            
+            const btnGemini = document.getElementById('btn-provider-gemini');
+            const btnOpenai = document.getElementById('btn-provider-openai');
+            const baseUrlContainer = document.getElementById('llm-base-url-container');
+            const modelInput = document.getElementById('llm-model');
+
+            if (provider === 'gemini') {
+                btnGemini.className = "flex-1 py-1.5 text-xs font-medium rounded-md bg-slate-800 text-slate-200 shadow-sm transition-all border border-slate-700";
+                btnOpenai.className = "flex-1 py-1.5 text-xs font-medium rounded-md text-slate-500 hover:text-slate-300 transition-all";
+                baseUrlContainer.classList.add('hidden');
+                if (modelInput.value === 'local-model') modelInput.value = 'gemini-3.5-flash';
+            } else {
+                btnOpenai.className = "flex-1 py-1.5 text-xs font-medium rounded-md bg-slate-800 text-slate-200 shadow-sm transition-all border border-slate-700";
+                btnGemini.className = "flex-1 py-1.5 text-xs font-medium rounded-md text-slate-500 hover:text-slate-300 transition-all";
+                baseUrlContainer.classList.remove('hidden');
+                if (modelInput.value.startsWith('gemini')) modelInput.value = 'local-model';
+            }
+            markUnverified();
+        }
+
+        async function verifyLlmConnection() {
+            saveLlmConfig();
+            const badge = document.getElementById('llm-status-badge');
+            const btn = document.getElementById('btn-verify-llm');
+            
+            badge.className = "text-amber-400 text-xs px-2 py-0.5 bg-amber-950/50 rounded border border-amber-900";
+            badge.textContent = "Verifying...";
+            btn.disabled = true;
+            btn.innerHTML = `<svg class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Connecting`;
+            
+            try {
+                const res = await fetch('/api/chat/ping_llm', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        provider: document.getElementById('llm-provider').value,
+                        model: document.getElementById('llm-model').value,
+                        base_url: document.getElementById('llm-base-url').value
+                    })
+                });
+                const data = await res.json();
+                
+                if (data.status === 'success') {
+                    badge.className = "text-emerald-400 text-xs px-2 py-0.5 bg-emerald-950/50 rounded border border-emerald-900";
+                    badge.textContent = "Active";
+                    appendMessage('System', 'LLMとの接続確認に成功し、設定を適用しました。', 'system');
+                } else {
+                    badge.className = "text-red-400 text-xs px-2 py-0.5 bg-red-950/50 rounded border border-red-900";
+                    badge.textContent = "Failed";
+                    appendMessage('System', `LLMへの接続に失敗しました: ${data.message}`, 'system');
+                }
+            } catch (e) {
+                badge.className = "text-red-400 text-xs px-2 py-0.5 bg-red-950/50 rounded border border-red-900";
+                badge.textContent = "Failed";
+                appendMessage('System', '通信エラーが発生しました。', 'system');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Apply & Verify`;
+            }
+        }
+
+        function saveLlmConfig() {
+            localStorage.setItem('jarvis_llm_provider', document.getElementById('llm-provider').value);
+            localStorage.setItem('jarvis_llm_model', document.getElementById('llm-model').value);
+            localStorage.setItem('jarvis_llm_base_url', document.getElementById('llm-base-url').value);
+        }
+
+        function loadLlmConfig() {
+            const provider = localStorage.getItem('jarvis_llm_provider');
+            const model = localStorage.getItem('jarvis_llm_model');
+            const baseUrl = localStorage.getItem('jarvis_llm_base_url');
+            
+            if (provider) {
+                setProviderUI(provider);
+                if (provider === 'openai') {
+                    const baseUrlContainer = document.getElementById('llm-base-url-container');
+                    baseUrlContainer.classList.remove('hidden');
+                }
+            }
+            if (model) document.getElementById('llm-model').value = model;
+            if (baseUrl) document.getElementById('llm-base-url').value = baseUrl;
         }
 
         userInput.addEventListener('keydown', function(e) {
@@ -297,6 +504,8 @@
 
         // 初回ロード時に連携ステータスを取得する処理（モックから実APIへ変更）
         document.addEventListener('DOMContentLoaded', () => {
+            loadLlmConfig();
+            
             const buttons = document.querySelectorAll('button[onclick^="handleConnect"]');
             buttons.forEach(async (btn) => {
                 const provider = btn.getAttribute('onclick').match(/'([^']+)'/)[1];
@@ -506,13 +715,24 @@
             currentAbortController = new AbortController();
 
             try {
+                // LLM設定の取得
+                const provider = document.getElementById('llm-provider').value;
+                const model = document.getElementById('llm-model').value;
+                const baseUrl = document.getElementById('llm-base-url').value;
+
                 // FastAPIのバックエンドAPIへ送信
                 const res = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: text }),
+                    body: JSON.stringify({ 
+                        message: text,
+                        provider: provider,
+                        model: model,
+                        base_url: baseUrl
+                    }),
                     signal: currentAbortController.signal
                 });
+                
                 const data = await res.json();
                 appendMessage('JARVIS', data.reply, 'jarvis');
             } catch (err) {
@@ -526,6 +746,7 @@
                 currentAbortController = null;
             }
         });
+
 
         function appendMessage(sender, text, type, save=true) {
             const div = document.createElement('div');

@@ -423,10 +423,11 @@ def download_file_ssh(hostname: str, username: str, remote_path: str, local_path
             os.remove(temp_key_path)
 
 
+from tools.browser_tools import browser_tools
 
 tools = [
     notion_search, notion_create_page, notion_append_block, 
     search_recent_emails, get_email_details, send_email, create_email_draft,
     notify_boss_by_phone, notify_boss, web_search, read_knowledge, update_knowledge,
     github_create_repo, drive_upload_file, execute_ssh_command, upload_file_ssh, download_file_ssh
-]
+] + browser_tools
