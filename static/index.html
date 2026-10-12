@@ -209,7 +209,17 @@
         <div class="md:col-span-2 bg-slate-900 border border-slate-800 rounded-lg flex flex-col h-[calc(100dvh-100px)] md:h-[650px] order-1 md:order-2">
             <div class="p-4 border-b border-slate-800 flex justify-between items-center">
                 <h2 class="text-sm font-medium text-slate-300">Command & Chat Interface</h2>
-                <button onclick="clearUIHistory()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 px-2 py-1 rounded border border-slate-700 transition" title="画面上の履歴のみをクリア（記憶は保持されます）">Clear UI</button>
+                <div class="flex items-center space-x-4">
+                    <label class="flex items-center space-x-2 cursor-pointer" title="JARVISの音声読み上げのON/OFFを切り替えます">
+                        <span class="text-xs text-slate-400 font-medium">JARVIS Voice</span>
+                        <div class="relative">
+                            <input type="checkbox" id="jarvis-voice-toggle" class="sr-only peer">
+                            <div class="block bg-slate-800 w-8 h-5 rounded-full border border-slate-700 peer-checked:bg-emerald-900 peer-checked:border-emerald-600 transition-colors"></div>
+                            <div class="absolute left-1 top-1 bg-slate-400 w-3 h-3 rounded-full transition-transform peer-checked:translate-x-3 peer-checked:bg-emerald-400"></div>
+                        </div>
+                    </label>
+                    <button onclick="clearUIHistory()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 px-2 py-1 rounded border border-slate-700 transition" title="画面上の履歴のみをクリア（記憶は保持されます）">Clear UI</button>
+                </div>
             </div>
             <!-- チャットログ表示エリア -->
             <div id="chat-logs" class="flex-1 p-4 overflow-y-auto space-y-4 text-sm">
@@ -223,6 +233,9 @@
             <!-- 入力フォーム -->
             <div class="p-4 border-t border-slate-800 bg-slate-900/50">
                 <form id="chat-form" class="flex gap-3 items-end">
+                    <button type="button" id="voice-btn" onclick="toggleVoiceInput()" class="bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 w-[42px] h-[42px] rounded border border-slate-700 transition-colors flex items-center justify-center shrink-0" title="音声入力">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+                    </button>
                     <textarea id="user-input" placeholder="JARVISへ指示を入力... (Shift+Enterで改行)" rows="1" class="flex-1 bg-slate-950 border border-slate-700 rounded px-4 py-2.5 text-sm focus:outline-none focus:border-slate-500 text-slate-100 placeholder-slate-500 resize-none max-h-32" style="min-height: 42px;" oninput="this.style.height = 'auto'; this.style.height = this.scrollHeight + 'px'"></textarea>
                     <button type="button" id="stop-btn" onclick="stopProcessing()" class="hidden bg-red-600/80 text-white font-medium px-5 py-2.5 rounded text-sm hover:bg-red-500 transition-colors h-[42px]">停止</button>
                     <button type="submit" class="bg-slate-100 text-slate-950 font-medium px-5 py-2.5 rounded text-sm hover:bg-slate-200 transition-colors h-[42px]">送信</button>
@@ -510,6 +523,101 @@
             userInput.focus();
         }
 
+        // --- Voice Feature ---
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition = null;
+        let isRecording = false;
+
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.lang = 'ja-JP';
+            recognition.interimResults = false;
+            recognition.continuous = false;
+            
+            recognition.onstart = () => {
+                isRecording = true;
+                const btn = document.getElementById('voice-btn');
+                btn.classList.add('text-red-400', 'border-red-500', 'bg-red-950/30');
+                btn.classList.remove('text-slate-400', 'bg-slate-800', 'border-slate-700');
+                document.getElementById('user-input').placeholder = "音声入力中...";
+            };
+            
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                const input = document.getElementById('user-input');
+                input.value = transcript;
+                input.style.height = 'auto';
+                input.style.height = input.scrollHeight + 'px';
+            };
+            
+            recognition.onerror = (event) => {
+                console.error("Speech recognition error", event.error);
+                stopVoiceInput();
+            };
+            
+            recognition.onend = () => {
+                stopVoiceInput();
+                const input = document.getElementById('user-input');
+                if(input.value.trim() !== '') {
+                    // Start thinking indication or just submit
+                    chatForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+                }
+            };
+        }
+
+        function toggleVoiceInput() {
+            if (!SpeechRecognition) {
+                alert("お使いのブラウザは音声入力に対応していません。Google Chrome等をご利用ください。");
+                return;
+            }
+            if (isRecording) {
+                recognition.stop();
+            } else {
+                recognition.start();
+            }
+        }
+
+        function stopVoiceInput() {
+            isRecording = false;
+            const btn = document.getElementById('voice-btn');
+            if (btn) {
+                btn.classList.remove('text-red-400', 'border-red-500', 'bg-red-950/30');
+                btn.classList.add('text-slate-400', 'bg-slate-800', 'border-slate-700');
+            }
+            document.getElementById('user-input').placeholder = "JARVISへ指示を入力... (Shift+Enterで改行)";
+        }
+
+        let lastSpokenText = "";
+
+        function playJarvisVoice(text) {
+            const toggle = document.getElementById('jarvis-voice-toggle');
+            if (!toggle || !toggle.checked) return;
+            
+            // Markdownや記号を除去して読みやすくする
+            const cleanText = text.replace(/[*#`_]/g, '').trim();
+            
+            if (!cleanText || cleanText === lastSpokenText) return;
+            lastSpokenText = cleanText;
+            
+            const utterance = new SpeechSynthesisUtterance(cleanText);
+            utterance.lang = 'ja-JP';
+            utterance.rate = 1.1; 
+            
+            const voices = window.speechSynthesis.getVoices();
+            const jaVoices = voices.filter(v => v.lang.includes('ja'));
+            if (jaVoices.length > 0) {
+                const googleVoice = jaVoices.find(v => v.name.includes('Google'));
+                utterance.voice = googleVoice || jaVoices[0];
+            }
+            
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // ページロード時に声をロードしておく
+        if (window.speechSynthesis) {
+            window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+        }
+
         // 初回ロード時に連携ステータスを取得する処理（モックから実APIへ変更）
         document.addEventListener('DOMContentLoaded', () => {
             loadLlmConfig();
@@ -551,13 +659,18 @@
                 if (res.ok) {
                     const data = await res.json();
                     if (data.history && data.history.length !== currentHistoryCount) {
+                        const previousCount = currentHistoryCount;
                         currentHistoryCount = data.history.length;
                         chatLogs.innerHTML = '';
                         if (data.history.length === 0) {
                             chatLogs.innerHTML = defaultChatLogHTML;
                         } else {
-                            data.history.forEach(h => {
+                            data.history.forEach((h, index) => {
                                 appendMessage(h.sender, h.text, h.type, false);
+                                // 新規に追加されたJARVISのメッセージのみ音声を再生
+                                if (previousCount !== -1 && index >= previousCount && h.type === 'jarvis') {
+                                    playJarvisVoice(h.text);
+                                }
                             });
                         }
                     }
@@ -734,6 +847,8 @@
 
             const stopBtn = document.getElementById('stop-btn');
             stopBtn.classList.remove('hidden');
+            
+            currentAbortController = new AbortController();
 
             try {
                 // LLM設定の取得
@@ -756,6 +871,7 @@
                 
                 const data = await res.json();
                 appendMessage('JARVIS', data.reply, 'jarvis');
+                playJarvisVoice(data.reply);
             } catch (err) {
                 appendMessage('System', '通信エラーが発生しました。', 'system');
             } finally {

@@ -2,7 +2,7 @@ import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from psycopg_pool import AsyncConnectionPool
 
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -117,13 +117,15 @@ app = FastAPI(lifespan=lifespan)
 
 @app.middleware("http")
 async def ip_restriction_middleware(request: Request, call_next):
-    client_ip = request.client.host
-    # Cloudflare Tunnelからのアクセス(172.18.0.1)のみ許可
-    if client_ip != "172.18.0.1":
-        return JSONResponse(
-            status_code=403, 
-            content={"detail": "Forbidden: Access restricted."}
-        )
+    allowed_ips_env = os.getenv("ALLOWED_IPS", "").strip()
+    if allowed_ips_env:
+        allowed_ips = [ip.strip() for ip in allowed_ips_env.split(",") if ip.strip()]
+        client_ip = request.client.host
+        if client_ip not in allowed_ips:
+            return JSONResponse(
+                status_code=403, 
+                content={"detail": "Forbidden: Access restricted."}
+            )
     return await call_next(request)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
