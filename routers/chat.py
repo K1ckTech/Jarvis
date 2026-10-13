@@ -23,15 +23,14 @@ async def chat_endpoint(req: ChatRequest, request: Request):
     }
     
     async def generate_response():
-        task = asyncio.create_task(app_graph.ainvoke({"messages": [HumanMessage(content=req.message)]}, config))
-        
-        # Keep-alive heartbeat to prevent timeouts
-        while not task.done():
-            yield b" "
-            await asyncio.sleep(5)
-            
         try:
-            result = task.result()
+            task = asyncio.create_task(app_graph.ainvoke({"messages": [HumanMessage(content=req.message)]}, config))
+            
+            while not task.done():
+                yield b" "
+                await asyncio.sleep(2)
+                
+            result = await task
             content = result['messages'][-1].content
             
             if isinstance(content, list):
@@ -109,7 +108,9 @@ def ping_llm(req: PingLLMRequest):
             import os
             api_key = os.getenv("LOCAL_LLM_KEY", "dummy")
             url = req.base_url if req.base_url else os.getenv("LOCAL_LLM_URL", "http://localhost:8000/v1")
-            llm = ChatOpenAI(model=req.model, base_url=url, api_key=api_key, max_retries=1)
+            if "11434" in url and not url.rstrip("/").endswith("/v1"):
+                url = url.rstrip("/") + "/v1"
+            llm = ChatOpenAI(model=req.model, base_url=url, api_key=api_key, max_retries=1, timeout=60)
             llm.invoke("Hi")
         else:
             from langchain_google_genai import ChatGoogleGenerativeAI

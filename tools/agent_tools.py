@@ -14,6 +14,16 @@ from core.config import (
     GITHUB_APP_ID, GITHUB_PRIVATE_KEY_PATH,
     DISCORD_WEBHOOK_URL, DISCORD_USER_ID
 )
+from core.google_drive_auth import get_google_drive_credentials
+
+try:
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaFileUpload
+    GOOGLE_API_CLIENT_AVAILABLE = True
+except ImportError:
+    build = None
+    MediaFileUpload = None
+    GOOGLE_API_CLIENT_AVAILABLE = False
 
 def _get_notion_headers():
     return {
@@ -406,13 +416,55 @@ def github_commit_file(repo: str, file_path: str, content: str, commit_message: 
 
 @tool
 def drive_upload_file(file_path: str, mime_type: str = "text/plain") -> str:
-    """Google Driveにファイルをアップロードする。"""
+    """Google Driveにローカルファイルをアップロードする"""
     try:
-        if not os.path.exists("oauth_config.json") or not os.path.exists(file_path):
-            return f"OAuth設定が存在しないか、ファイル '{file_path}' が見つかりません。"
-        return f"ファイル '{file_path}' のGoogle Driveアップロード要求を受け付けました。(現在OAuth2コールバックリスナーの実装待ちです)"
+        if not GOOGLE_API_CLIENT_AVAILABLE:
+            return "エラー: google-api-python-client がインストールされていません。コンテナを再ビルドしてください。"
+        if not os.path.exists(file_path):
+            return f"エラー: ファイル '{file_path}' が見つかりません。"
+        creds = get_google_drive_credentials()
+        if not creds:
+            return "エラー: Google Driveの認証情報が設定されていないか有効期限が切れています。ダッシュボードから連携を行ってください。"
+        service = build("drive", "v3", credentials=creds)
+        file_name = os.path.basename(file_path)
+        file_metadata = {"name": file_name}
+        media = MediaFileUpload(file_path, mimetype=mime_type, resumable=True)
+        uploaded = service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields="id, name, webViewLink"
+        ).execute()
+        link = uploaded.get("webViewLink", "")
+        file_id = uploaded.get("id", "")
+        return f"成功: Google Driveにアップロードしました。(ファイル名: {file_name}, ID: {file_id}, リンク: {link})"
     except Exception as e:
         return f"アップロードエラー: {str(e)}"
+
+@tool
+def drive_list_files(query: str = "", max_results: int = 10) -> str:
+    """Google Drive上のファイルやフォルダの一覧・検索結果を取得する"""
+    try:
+        if not GOOGLE_API_CLIENT_AVAILABLE:
+            return "エラー: google-api-python-client がインストールされていません。コンテナを再ビルドしてください。"
+        creds = get_google_drive_credentials()
+        if not creds:
+            return "エラー: Google Driveの認証情報が設定されていません。ダッシュボードから連携を行ってください。"
+        service = build("drive", "v3", credentials=creds)
+        q = query.strip() if query.strip() else "trashed = false"
+        res = service.files().list(
+            q=q,
+            pageSize=max(1, min(max_results, 50)),
+            fields="files(id, name, mimeType, webViewLink, modifiedTime)"
+        ).execute()
+        files = res.get("files", [])
+        if not files:
+            return "Google Driveに対象のファイルは見つかりませんでした。"
+        lines = ["Google Drive ファイル一覧:"]
+        for f in files:
+            lines.append(f"- {f.get('name')} (ID: {f.get('id')}, 種別: {f.get('mimeType')}, URL: {f.get('webViewLink')})")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Google Drive一覧取得エラー: {str(e)}"
 
 @tool
 def execute_ssh_command(hostname: str, username: str, command: str, password: str = None, key_filename: str = None, key_content: str = None, port: int = 22) -> str:
@@ -500,5 +552,5 @@ tools = [
     notion_search, notion_create_page, notion_append_block, 
     search_recent_emails, get_email_details, send_email, create_email_draft,
     notify_boss_by_phone, notify_boss, web_search, read_knowledge, update_knowledge,
-    github_create_repo, drive_upload_file, execute_ssh_command, upload_file_ssh, download_file_ssh
+    github_create_repo, drive_upload_file, drive_list_files, execute_ssh_command, upload_file_ssh, download_file_ssh
 ] + browser_tools

@@ -27,17 +27,19 @@ async def call_model(state: MessagesState, config: RunnableConfig):
     model_name = config.get("configurable", {}).get("model_name", "gemini-3.5-flash")
     provider = config.get("configurable", {}).get("provider", "gemini")
     base_url = config.get("configurable", {}).get("base_url", "")
-    
     if provider == "openai":
         api_key = os.getenv("LOCAL_LLM_KEY", "dummy")
         url = base_url if base_url else os.getenv("LOCAL_LLM_URL", "http://localhost:8000/v1")
+        if "11434" in url and not url.rstrip("/").endswith("/v1"):
+            url = url.rstrip("/") + "/v1"
         print(f"[LLM Exec] Using Local LLM ({model_name}) at {url}")
         llm = ChatOpenAI(
             model=model_name,
             base_url=url,
             api_key=api_key,
             temperature=0,
-            streaming=True
+            timeout=300,
+            max_retries=2
         )
     elif provider == "ollama":
         url = base_url if base_url else os.getenv("LOCAL_LLM_URL", "http://localhost:11434")
@@ -51,10 +53,13 @@ async def call_model(state: MessagesState, config: RunnableConfig):
         print(f"[LLM Exec] Using Google Gemini ({model_name})")
         llm = ChatGoogleGenerativeAI(model=model_name, temperature=0, streaming=True)
         
-    llm_with_tools = llm.bind_tools(tools)
-    
     filtered_messages = [m for m in messages if m.content != "[UI_CLEAR]"]
-    response = await llm_with_tools.ainvoke(filtered_messages, config=config)
+    try:
+        llm_with_tools = llm.bind_tools(tools)
+        response = await llm_with_tools.ainvoke(filtered_messages, config=config)
+    except Exception as e:
+        print(f"[LLM Exec] Tool binding failed ({e}). Retrying with direct model call...")
+        response = await llm.ainvoke(filtered_messages, config=config)
     return {"messages": [response]}
 
 workflow = StateGraph(MessagesState)

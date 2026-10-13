@@ -245,29 +245,94 @@
     </main>
 
     <!-- OAuth設定モーダル -->
-    <div id="oauth-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center">
-        <div class="bg-slate-900 border border-slate-700 rounded-lg p-6 w-full max-w-md shadow-2xl">
-            <div class="flex justify-between items-center mb-5">
+    <div id="oauth-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-lg p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
                 <h3 class="text-lg font-medium text-slate-200"><span id="oauth-provider-name">Provider</span> Setup</h3>
                 <button onclick="closeOauthModal()" class="text-slate-400 hover:text-slate-200">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
             </div>
-            <p id="oauth-instructions" class="text-xs text-slate-400 mb-5">連携のためには各プラットフォームの開発者ポータルでOAuthアプリを作成し、Client IDとClient Secretを取得する必要があります。</p>
-            <form id="oauth-form" class="space-y-4">
-                <input type="hidden" id="oauth-provider-id">
-                <div id="field-client-id-container">
-                    <label id="label-client-id" class="block text-xs text-slate-400 mb-1">Client ID</label>
-                    <input type="text" id="oauth-client-id" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500">
+
+            <!-- Google Drive専用コンテナ -->
+            <div id="oauth-drive-container" class="space-y-4 hidden">
+                <p class="text-xs text-slate-400">Google Cloud Console で OAuth 2.0 クライアント（ウェブ アプリケーション）を作成し、認証情報を設定してください。</p>
+                
+                <div class="bg-slate-950 border border-slate-800 rounded p-3 text-xs">
+                    <div class="text-slate-400 mb-1 font-medium">承認済みのリダイレクト URI:</div>
+                    <div class="flex items-center gap-2">
+                        <input type="text" id="drive-redirect-uri" readonly class="flex-1 bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-300 font-mono text-[11px] select-all focus:outline-none">
+                        <button type="button" onclick="copyDriveRedirectUri()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded border border-slate-700 text-xs transition">コピー</button>
+                    </div>
+                    <div class="text-[11px] text-slate-500 mt-1">※Google Cloud ConsoleのOAuthクライアントの「承認済みのリダイレクト URI」に上記を登録してください。</div>
                 </div>
-                <div>
-                    <label id="label-client-secret" class="block text-xs text-slate-400 mb-1">Client Secret</label>
-                    <input type="password" id="oauth-client-secret" required class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500">
+
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Client ID <span class="text-red-400">*</span></label>
+                        <input type="text" id="drive-client-id" placeholder="xxxx.apps.googleusercontent.com" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Client Secret <span class="text-red-400">*</span></label>
+                        <input type="password" id="drive-client-secret" placeholder="Client Secret" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500">
+                    </div>
                 </div>
+
                 <div class="pt-2">
-                    <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2 rounded text-sm transition">認証情報を保存してログイン</button>
+                    <button type="button" id="drive-auth-btn" onclick="startGoogleDriveAuth()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5 rounded text-sm transition flex items-center justify-center gap-2">
+                        <span>Google アカウントで認可する</span>
+                    </button>
                 </div>
-            </form>
+
+                <!-- 手動・高度な設定 -->
+                <div class="border-t border-slate-800 pt-3">
+                    <button type="button" onclick="toggleDriveAdvanced()" class="text-xs text-slate-400 hover:text-slate-300 flex items-center gap-1">
+                        <span id="drive-advanced-arrow">▶</span> 高度な設定（認可コード手動入力 / Refresh Token 直接指定）
+                    </button>
+                    <div id="drive-advanced-panel" class="hidden mt-3 space-y-3 bg-slate-950/60 border border-slate-800/80 rounded p-3">
+                        <div>
+                            <label class="block text-[11px] text-slate-400 mb-1">認可コード または リダイレクトされたURL全体</label>
+                            <div class="flex gap-2">
+                                <input type="text" id="drive-auth-code" placeholder="4/0Axxxx... または http://...?code=..." class="flex-1 bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
+                                <button type="button" onclick="exchangeGoogleDriveCode()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded border border-slate-700 text-xs transition whitespace-nowrap">コードで連携</button>
+                            </div>
+                        </div>
+                        <div class="border-t border-slate-800/60 pt-2">
+                            <label class="block text-[11px] text-slate-400 mb-1">Refresh Token (直接保存する場合)</label>
+                            <div class="flex gap-2">
+                                <input type="password" id="drive-refresh-token" placeholder="1//0xxxx..." class="flex-1 bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
+                                <button type="button" onclick="saveGoogleDriveRefreshToken()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded border border-slate-700 text-xs transition whitespace-nowrap">トークン保存</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="drive-disconnect-section" class="border-t border-slate-800 pt-3 hidden">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-emerald-400">現在連携されています</span>
+                        <button type="button" onclick="disconnectGoogleDrive()" class="text-red-400 hover:text-red-300 border border-red-900/50 hover:border-red-700 px-3 py-1 rounded bg-red-950/20 transition">連携を解除する</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 汎用プロバイダ用コンテナ -->
+            <div id="oauth-generic-container">
+                <p id="oauth-instructions" class="text-xs text-slate-400 mb-5">連携のためには各プラットフォームの開発者ポータルでOAuthアプリを作成し、Client IDとClient Secretを取得する必要があります。</p>
+                <form id="oauth-form" class="space-y-4">
+                    <input type="hidden" id="oauth-provider-id">
+                    <div id="field-client-id-container">
+                        <label id="label-client-id" class="block text-xs text-slate-400 mb-1">Client ID</label>
+                        <input type="text" id="oauth-client-id" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500">
+                    </div>
+                    <div>
+                        <label id="label-client-secret" class="block text-xs text-slate-400 mb-1">Client Secret</label>
+                        <input type="password" id="oauth-client-secret" required class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500">
+                    </div>
+                    <div class="pt-2">
+                        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2 rounded text-sm transition">認証情報を保存してログイン</button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 
@@ -653,7 +718,10 @@
             // Backend handles history automatically.
         }
 
+        let isSending = false;
+
         async function loadChatHistory() {
+            if (isSending) return;
             try {
                 const res = await fetch('/api/chat/history/jarvis_main_thread');
                 if (res.ok) {
@@ -730,7 +798,40 @@
 
         async function handleConnect(btn, skillName) {
             try {
-                // 状態確認
+                if (skillName === 'Google Drive') {
+                    document.getElementById('oauth-provider-name').textContent = 'Google Drive';
+                    document.getElementById('oauth-drive-container').classList.remove('hidden');
+                    document.getElementById('oauth-generic-container').classList.add('hidden');
+                    
+                    const redirectInput = document.getElementById('drive-redirect-uri');
+                    redirectInput.value = `${window.location.origin}/api/oauth/google/callback`;
+
+                    const res = await fetch(`/api/oauth/status/${encodeURIComponent(skillName)}`);
+                    const data = await res.json();
+                    
+                    const clientIdInput = document.getElementById('drive-client-id');
+                    if (data.client_id) {
+                        clientIdInput.value = data.client_id;
+                    }
+                    
+                    const disconnectSection = document.getElementById('drive-disconnect-section');
+                    const authBtnText = document.querySelector('#drive-auth-btn span');
+                    if (data.connected) {
+                        disconnectSection.classList.remove('hidden');
+                        if (authBtnText) authBtnText.textContent = 'Google アカウントで再認可する';
+                    } else {
+                        disconnectSection.classList.add('hidden');
+                        if (authBtnText) authBtnText.textContent = 'Google アカウントで認可する';
+                    }
+                    
+                    oauthModal.classList.remove('hidden');
+                    return;
+                }
+
+                // 汎用プロバイダ
+                document.getElementById('oauth-drive-container').classList.add('hidden');
+                document.getElementById('oauth-generic-container').classList.remove('hidden');
+
                 const res = await fetch(`/api/oauth/status/${encodeURIComponent(skillName)}`);
                 const data = await res.json();
                 
@@ -738,9 +839,7 @@
                     if (confirm(`${skillName} は既に連携されています。連携を解除して再設定しますか？`)) {
                         const disconnectRes = await fetch(`/api/oauth/disconnect/${encodeURIComponent(skillName)}`, { method: 'POST' });
                         if (disconnectRes.ok) {
-                            btn.textContent = 'Connect';
-                            btn.classList.remove('text-emerald-400', 'border-emerald-500/50', 'bg-emerald-950/30');
-                            btn.classList.add('text-slate-400', 'hover:text-emerald-400', 'border-slate-700', 'hover:border-emerald-500/50', 'bg-slate-950');
+                            updateProviderButtonDisconnected(skillName);
                             appendMessage('System', `${skillName} の連携を解除しました。`, 'system');
                         } else {
                             alert('連携解除に失敗しました。');
@@ -750,7 +849,6 @@
                 }
                 
                 if (!data.configured) {
-                    // 未設定ならモーダルを開く
                     document.getElementById('oauth-provider-name').textContent = skillName;
                     document.getElementById('oauth-provider-id').value = skillName;
                     document.getElementById('oauth-client-id').value = '';
@@ -778,10 +876,8 @@
                     
                     oauthModal.classList.remove('hidden');
                 } else {
-                    // 設定済みなら認証フローへリダイレクト（今回は簡易的にログイン完了状態にする）
                     btn.textContent = 'Authorizing...';
                     btn.classList.add('text-amber-400');
-                    // 実際はここで location.href = `/api/oauth/login/${skillName}` 等へ飛ばす
                     setTimeout(() => {
                         setButtonConnected(btn);
                         appendMessage('System', `${skillName} のOAuth連携が完了し、ツールが利用可能になりました。`, 'system');
@@ -792,11 +888,188 @@
             }
         }
 
+        function toggleDriveAdvanced() {
+            const panel = document.getElementById('drive-advanced-panel');
+            const arrow = document.getElementById('drive-advanced-arrow');
+            const isHidden = panel.classList.contains('hidden');
+            panel.classList.toggle('hidden', !isHidden);
+            arrow.textContent = isHidden ? '▼' : '▶';
+        }
+
+        function copyDriveRedirectUri() {
+            const input = document.getElementById('drive-redirect-uri');
+            input.select();
+            navigator.clipboard.writeText(input.value);
+            alert('リダイレクトURIをクリップボードにコピーしました。');
+        }
+
+        async function startGoogleDriveAuth() {
+            const clientId = document.getElementById('drive-client-id').value.trim();
+            const clientSecret = document.getElementById('drive-client-secret').value.trim();
+            if (!clientId || !clientSecret) {
+                alert('Client ID と Client Secret を入力してください。');
+                return;
+            }
+            const redirectUri = document.getElementById('drive-redirect-uri').value;
+            
+            try {
+                const saveRes = await fetch('/api/oauth/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        provider: 'Google Drive',
+                        client_id: clientId,
+                        client_secret: clientSecret
+                    })
+                });
+                if (!saveRes.ok) {
+                    alert('認証情報の保存に失敗しました。');
+                    return;
+                }
+
+                const urlRes = await fetch(`/api/oauth/google/auth-url?redirect_uri=${encodeURIComponent(redirectUri)}&client_id=${encodeURIComponent(clientId)}`);
+                const urlData = await urlRes.json();
+                if (!urlRes.ok || !urlData.auth_url) {
+                    alert('認証URLの生成に失敗しました: ' + (urlData.detail || '不明なエラー'));
+                    return;
+                }
+
+                window.open(urlData.auth_url, 'google_auth_window', 'width=650,height=750,menubar=no,toolbar=no');
+                appendMessage('System', 'Google Driveの認可ウィンドウを開きました。認証を完了してください。', 'system');
+            } catch (e) {
+                alert('エラーが発生しました: ' + e.message);
+            }
+        }
+
+        async function exchangeGoogleDriveCode() {
+            let raw = document.getElementById('drive-auth-code').value.trim();
+            if (!raw) {
+                alert('認可コードまたはURLを入力してください。');
+                return;
+            }
+            let code = raw;
+            if (raw.includes('code=')) {
+                try {
+                    const urlObj = new URL(raw);
+                    code = urlObj.searchParams.get('code') || raw;
+                } catch(_) {
+                    const m = raw.match(/code=([^&]+)/);
+                    if (m) code = decodeURIComponent(m[1]);
+                }
+            }
+            const redirectUri = document.getElementById('drive-redirect-uri').value;
+            const clientId = document.getElementById('drive-client-id').value.trim();
+            const clientSecret = document.getElementById('drive-client-secret').value.trim();
+
+            try {
+                const res = await fetch('/api/oauth/google/exchange', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        code: code,
+                        redirect_uri: redirectUri,
+                        client_id: clientId || undefined,
+                        client_secret: clientSecret || undefined
+                    })
+                });
+                if (res.ok) {
+                    closeOauthModal();
+                    updateProviderButtonConnected('Google Drive');
+                    appendMessage('System', 'Google Drive の認可コードからトークンを取得し、連携が完了しました。', 'system');
+                } else {
+                    const err = await res.json();
+                    alert('トークン交換に失敗しました: ' + (err.detail || '不明なエラー'));
+                }
+            } catch (e) {
+                alert('通信エラー: ' + e.message);
+            }
+        }
+
+        async function saveGoogleDriveRefreshToken() {
+            const refreshToken = document.getElementById('drive-refresh-token').value.trim();
+            const clientId = document.getElementById('drive-client-id').value.trim();
+            const clientSecret = document.getElementById('drive-client-secret').value.trim();
+            if (!refreshToken) {
+                alert('Refresh Token を入力してください。');
+                return;
+            }
+            if (!clientId || !clientSecret) {
+                alert('Client ID と Client Secret も併せて入力してください。');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/oauth/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        provider: 'Google Drive',
+                        client_id: clientId,
+                        client_secret: clientSecret,
+                        refresh_token: refreshToken
+                    })
+                });
+                if (res.ok) {
+                    closeOauthModal();
+                    updateProviderButtonConnected('Google Drive');
+                    appendMessage('System', 'Google Drive の Refresh Token を設定し、連携が完了しました。', 'system');
+                } else {
+                    alert('保存に失敗しました。');
+                }
+            } catch (e) {
+                alert('通信エラー: ' + e.message);
+            }
+        }
+
+        async function disconnectGoogleDrive() {
+            if (!confirm('Google Drive の連携を解除しますか？')) return;
+            try {
+                const res = await fetch('/api/oauth/disconnect/Google%20Drive', { method: 'POST' });
+                if (res.ok) {
+                    closeOauthModal();
+                    updateProviderButtonDisconnected('Google Drive');
+                    appendMessage('System', 'Google Drive の連携を解除しました。', 'system');
+                } else {
+                    alert('連携解除に失敗しました。');
+                }
+            } catch (e) {
+                alert('エラーが発生しました。');
+            }
+        }
+
+        function updateProviderButtonConnected(provider) {
+            const buttons = document.querySelectorAll('button[onclick^="handleConnect"]');
+            buttons.forEach(btn => {
+                if (btn.getAttribute('onclick').includes(provider)) {
+                    setButtonConnected(btn);
+                }
+            });
+        }
+
+        function updateProviderButtonDisconnected(provider) {
+            const buttons = document.querySelectorAll('button[onclick^="handleConnect"]');
+            buttons.forEach(btn => {
+                if (btn.getAttribute('onclick').includes(provider)) {
+                    btn.textContent = 'Connect';
+                    btn.classList.remove('text-emerald-400', 'border-emerald-500/50', 'bg-emerald-950/30', 'text-amber-400');
+                    btn.classList.add('text-slate-400', 'hover:text-emerald-400', 'border-slate-700', 'hover:border-emerald-500/50', 'bg-slate-950');
+                }
+            });
+        }
+
+        window.addEventListener('message', (event) => {
+            if (event.data && event.data.type === 'oauth_connected') {
+                const provider = event.data.provider;
+                closeOauthModal();
+                updateProviderButtonConnected(provider);
+                appendMessage('System', `${provider} の認証が完了し、ツールが利用可能になりました。`, 'system');
+            }
+        });
+
         function setButtonConnected(btn) {
             btn.textContent = 'Connected';
             btn.classList.remove('text-amber-400', 'border-amber-500/50', 'text-slate-400', 'hover:text-emerald-400', 'border-slate-700', 'hover:border-emerald-500/50', 'bg-slate-950');
             btn.classList.add('text-emerald-400', 'border-emerald-500/50', 'bg-emerald-950/30');
-            // btn.onclick = null; は解除のためにコメントアウトしてクリックを有効化したままにする
         }
 
         function closeOauthModal() {
@@ -818,17 +1091,9 @@
                 
                 if (res.ok) {
                     closeOauthModal();
-                    // 本来はここでOAuth認可画面へリダイレクトする
                     appendMessage('System', `${provider} の設定を保存しました。認可フローへ移行します...`, 'system');
-                    
-                    // ダミーの認可完了処理
                     setTimeout(() => {
-                        const buttons = document.querySelectorAll('button[onclick^="handleConnect"]');
-                        buttons.forEach(btn => {
-                            if (btn.getAttribute('onclick').includes(provider)) {
-                                setButtonConnected(btn);
-                            }
-                        });
+                        updateProviderButtonConnected(provider);
                         appendMessage('System', `${provider} のOAuth連携が完了し、アクセス権を取得しました。`, 'system');
                     }, 1500);
                 }
@@ -849,14 +1114,13 @@
             stopBtn.classList.remove('hidden');
             
             currentAbortController = new AbortController();
+            isSending = true;
 
             try {
-                // LLM設定の取得
                 const provider = document.getElementById('llm-provider').value;
                 const model = document.getElementById('llm-model').value;
                 const baseUrl = document.getElementById('llm-base-url').value;
 
-                // FastAPIのバックエンドAPIへ送信
                 const res = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -868,13 +1132,45 @@
                     }),
                     signal: currentAbortController.signal
                 });
+
+                if (!res.ok) {
+                    const errText = await res.text();
+                    throw new Error(`サーバーエラー (${res.status}): ${errText || res.statusText}`);
+                }
                 
-                const data = await res.json();
-                appendMessage('JARVIS', data.reply, 'jarvis');
-                playJarvisVoice(data.reply);
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let fullText = '';
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    fullText += decoder.decode(value, { stream: true });
+                }
+                
+                fullText = fullText.trim();
+                let data = null;
+                try {
+                    data = JSON.parse(fullText);
+                } catch (_) {
+                    const jsonMatch = fullText.match(/\{[\s\S]*\}$/);
+                    if (jsonMatch) {
+                        data = JSON.parse(jsonMatch[0]);
+                    } else {
+                        throw new Error(`不正な応答形式: ${fullText.slice(0, 100)}`);
+                    }
+                }
+
+                if (data && data.reply) {
+                    appendMessage('JARVIS', data.reply, 'jarvis');
+                    playJarvisVoice(data.reply);
+                }
             } catch (err) {
-                appendMessage('System', '通信エラーが発生しました。', 'system');
+                if (err.name !== 'AbortError') {
+                    appendMessage('System', `通信エラー: ${err.message || '接続に失敗しました'}`, 'system');
+                }
             } finally {
+                isSending = false;
                 stopBtn.classList.add('hidden');
             }
         });
