@@ -1146,23 +1146,28 @@
 
             appendMessage('You', text, 'user');
 
-            const thinkingDiv = document.createElement('div');
-            thinkingDiv.id = 'thinking-indicator';
-            thinkingDiv.className = "flex flex-col space-y-1";
-            thinkingDiv.innerHTML = `
-                <span class="text-xs text-slate-500">JARVIS</span>
-                <div class="bg-slate-800 text-slate-400 border border-slate-700/50 p-3 rounded-lg max-w-[80%] flex items-center space-x-2">
-                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    <span class="text-xs">応答を生成中...</span>
-                </div>
-            `;
-            chatLogs.appendChild(thinkingDiv);
-            chatLogs.scrollTop = chatLogs.scrollHeight;
-
             const removeThinking = () => {
                 const el = document.getElementById('thinking-indicator');
                 if (el && el.parentNode) el.parentNode.removeChild(el);
             };
+
+            const showThinking = (msg = "応答を生成中...") => {
+                removeThinking();
+                const div = document.createElement('div');
+                div.id = 'thinking-indicator';
+                div.className = "flex flex-col space-y-1";
+                div.innerHTML = `
+                    <span class="text-xs text-slate-500">JARVIS</span>
+                    <div class="bg-slate-800 text-slate-400 border border-slate-700/50 p-3 rounded-lg max-w-[80%] flex items-center space-x-2">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <span class="text-xs">${msg}</span>
+                    </div>
+                `;
+                chatLogs.appendChild(div);
+                chatLogs.scrollTop = chatLogs.scrollHeight;
+            };
+
+            showThinking("応答を生成中...");
 
             const stopBtn = document.getElementById('stop-btn');
             if (stopBtn) stopBtn.classList.remove('hidden');
@@ -1194,34 +1199,53 @@
                 }
                 
                 const reader = res.body.getReader();
-                const decoder = new TextDecoder();
-                let fullText = '';
+                const decoder = new TextDecoder('utf-8');
+                let buffer = '';
+                let receivedAny = false;
                 
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
-                    fullText += decoder.decode(value, { stream: true });
+                    buffer += decoder.decode(value, { stream: true });
+                    
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+                    
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (!trimmed) continue;
+                        try {
+                            const data = JSON.parse(trimmed);
+                            if (data && data.reply) {
+                                receivedAny = true;
+                                removeThinking();
+                                appendMessage('JARVIS', data.reply, 'jarvis');
+                                playJarvisVoice(data.reply);
+                                
+                                if (!data.done) {
+                                    showThinking("処理を継続中...");
+                                }
+                            }
+                        } catch (e) {
+                            console.warn("Stream line parse warning:", trimmed);
+                        }
+                    }
+                }
+                
+                if (buffer.trim()) {
+                    try {
+                        const data = JSON.parse(buffer.trim());
+                        if (data && data.reply) {
+                            receivedAny = true;
+                            removeThinking();
+                            appendMessage('JARVIS', data.reply, 'jarvis');
+                            playJarvisVoice(data.reply);
+                        }
+                    } catch (_) {}
                 }
                 
                 removeThinking();
-
-                fullText = fullText.trim();
-                let data = null;
-                try {
-                    data = JSON.parse(fullText);
-                } catch (_) {
-                    const jsonMatch = fullText.match(/\{[\s\S]*\}$/);
-                    if (jsonMatch) {
-                        data = JSON.parse(jsonMatch[0]);
-                    } else {
-                        throw new Error(`不正な応答形式: ${fullText.slice(0, 100)}`);
-                    }
-                }
-
-                if (data && data.reply) {
-                    appendMessage('JARVIS', data.reply, 'jarvis');
-                    playJarvisVoice(data.reply);
-                } else {
+                if (!receivedAny) {
                     appendMessage('JARVIS', '応答がありませんでした。', 'jarvis');
                 }
                 

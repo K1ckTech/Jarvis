@@ -45,30 +45,53 @@ async def chat_endpoint(req: ChatRequest, request: Request):
     }
     
     async def generate_response():
+        emitted_any = False
         try:
-            task = asyncio.create_task(app_graph.ainvoke({"messages": [HumanMessage(content=req.message)]}, config))
-            
-            while not task.done():
-                yield b" "
-                await asyncio.sleep(2)
-                
-            result = await task
-            messages = result.get('messages', [])
-            ai_msg = next((m for m in reversed(messages) if (getattr(m, 'type', None) or (m.get('type') if isinstance(m, dict) else None)) == 'ai'), None)
-            if ai_msg:
-                content = getattr(ai_msg, 'content', None) or (ai_msg.get('content') if isinstance(ai_msg, dict) else None)
-                text = _extract_text(content)
-            elif messages:
-                last_m = messages[-1]
-                content = getattr(last_m, 'content', None) or (last_m.get('content') if isinstance(last_m, dict) else None)
-                text = _extract_text(content)
-            else:
-                text = ""
-                
-            if not text:
-                text = "処理が完了しました。"
-                
-            yield json.dumps({"reply": text}).encode('utf-8')
+            async for chunk in app_graph.astream(
+                {"messages": [HumanMessage(content=req.message)]}, 
+                config, 
+                stream_mode="updates"
+            ):
+                for node_name, node_output in chunk.items():
+                    if node_name == "agent":
+                        node_msgs = node_output.get("messages", [])
+                        for m in node_msgs:
+                            content = getattr(m, "content", None) or (m.get("content") if isinstance(m, dict) else None)
+                            tool_calls = getattr(m, "tool_calls", None) or (m.get("tool_calls") if isinstance(m, dict) else None)
+                            text = _extract_text(content).strip()
+                            
+                            if text:
+                                parts = [p.strip() for p in text.split("---MESSAGE_BREAK---") if p.strip()]
+                                for idx, part in enumerate(parts):
+                                    is_last_part = (idx == len(parts) - 1)
+                                    is_done = is_last_part and not bool(tool_calls)
+                                    emitted_any = True
+                                    yield (json.dumps({"reply": part, "done": is_done}) + "\n").encode('utf-8')
+                            elif tool_calls:
+                                tool_name = tool_calls[0].get("name", "") if isinstance(tool_calls[0], dict) else getattr(tool_calls[0], "name", "")
+                                tool_args = tool_calls[0].get("args", {}) if isinstance(tool_calls[0], dict) else getattr(tool_calls[0], "args", {})
+                                
+                                status_msg = None
+                                if tool_name == "web_search":
+                                    q = tool_args.get("query", "")
+                                    status_msg = f"「{q}」についてWeb検索を開始します..." if q else "Web検索を実行して最新情報を調査します..."
+                                elif tool_name == "notion_search":
+                                    status_msg = "Notion内のタスク・情報を検索しています..."
+                                elif tool_name == "read_knowledge":
+                                    status_msg = "社内ナレッジベース（事前知識）を確認しています..."
+                                elif "github" in tool_name:
+                                    status_msg = "GitHubの操作（リポジトリ・Issue確認等）を実行しています..."
+                                elif "drive" in tool_name:
+                                    status_msg = "Google Driveのファイル・フォルダを確認しています..."
+                                elif tool_name:
+                                    status_msg = f"{tool_name} を実行しています..."
+                                    
+                                if status_msg:
+                                    emitted_any = True
+                                    yield (json.dumps({"reply": status_msg, "done": False}) + "\n").encode('utf-8')
+
+            if not emitted_any:
+                yield (json.dumps({"reply": "処理が完了しました。", "done": True}) + "\n").encode('utf-8')
         except Exception as e:
             err_msg = str(e)
             if "429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg:
@@ -81,9 +104,9 @@ async def chat_endpoint(req: ChatRequest, request: Request):
             except Exception:
                 pass
                 
-            yield json.dumps({"reply": reply_text}).encode('utf-8')
+            yield (json.dumps({"reply": reply_text, "done": True}) + "\n").encode('utf-8')
 
-    return StreamingResponse(generate_response(), media_type="application/json")
+    return StreamingResponse(generate_response(), media_type="application/x-ndjson")
 
 
 @router.post("/clear")
@@ -124,9 +147,11 @@ async def get_chat_history(thread_id: str, request: Request):
             else:
                 history.append({"sender": "You", "text": _extract_text(m_content), "type": "user"})
         elif m_type == "ai":
-            text = _extract_text(m_content)
-            if text:
-                history.append({"sender": "JARVIS", "text": text, "type": "jarvis"})
+            raw_text = _extract_text(m_content)
+            if raw_text:
+                parts = [p.strip() for p in raw_text.split("---MESSAGE_BREAK---") if p.strip()]
+                for part in parts:
+                    history.append({"sender": "JARVIS", "text": part, "type": "jarvis"})
             
     return {"history": history}
 
