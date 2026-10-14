@@ -14,6 +14,16 @@ from core.config import (
     GITHUB_APP_ID, GITHUB_PRIVATE_KEY_PATH,
     DISCORD_WEBHOOK_URL, DISCORD_USER_ID
 )
+from core.google_drive_auth import get_google_drive_credentials
+
+try:
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaFileUpload
+    GOOGLE_API_CLIENT_AVAILABLE = True
+except ImportError:
+    build = None
+    MediaFileUpload = None
+    GOOGLE_API_CLIENT_AVAILABLE = False
 
 def _get_notion_headers():
     return {
@@ -173,14 +183,55 @@ def create_email_draft(to_email: str, subject: str, body_text: str) -> str:
 @tool
 def web_search(query: str) -> str:
     """インターネット上でキーワード検索を行い情報を取得する"""
+    results_list = []
+    
+    # 1. DuckDuckGo Search の試行
     try:
-        from ddgs import DDGS
-        results = DDGS().text(query, max_results=5)
-        if not results:
-            return "検索結果が見つかりませんでした。"
-        return "ウェブ検索結果:\n" + "\n".join([f"- {r.get('title')} ({r.get('href')})\n  {r.get('body')}" for r in results])
-    except Exception as e:
-        return f"検索エラー: {str(e)}"
+        try:
+            from duckduckgo_search import DDGS
+        except ImportError:
+            from ddgs import DDGS
+        ddg_results = list(DDGS(timeout=10).text(query, max_results=5))
+        for r in ddg_results:
+            title = r.get("title", "")
+            href = r.get("href", "")
+            body = r.get("body", "")
+            if title and href:
+                results_list.append(f"- タイトル: {title}\n  URL: {href}\n  概要: {body}")
+    except Exception as ddg_err:
+        pass
+        
+    # 2. DuckDuckGoがブロックされた場合のフォールバック: Yahoo Japan 検索
+    if not results_list:
+        try:
+            import urllib.parse
+            from bs4 import BeautifulSoup
+            
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+            url = f"https://search.yahoo.co.jp/search?p={urllib.parse.quote(query)}"
+            res = requests.get(url, headers=headers, timeout=10)
+            if res.status_code == 200:
+                soup = BeautifulSoup(res.text, "html.parser")
+                for section in soup.select("section"):
+                    h3 = section.select_one("h3")
+                    a = section.select_one("a")
+                    p = section.select_one("p")
+                    if h3 and a and a.get("href"):
+                        href = a.get("href")
+                        title = h3.get_text(strip=True)
+                        if "search.yahoo.co.jp" not in href and "listing.yahoo.co.jp" not in href and href.startswith("http") and "他の人はこちらも質問" not in title:
+                            desc = p.get_text(strip=True) if p else ""
+                            results_list.append(f"- タイトル: {title}\n  URL: {href}\n  概要: {desc}")
+                    if len(results_list) >= 5:
+                        break
+        except Exception:
+            pass
+
+    if results_list:
+        return "ウェブ検索結果:\n" + "\n".join(results_list)
+    return f"「{query}」に関する検索結果は見つかりませんでした。別のキーワードでお試しください。"
 
 @tool
 def read_knowledge() -> str:
@@ -406,13 +457,55 @@ def github_commit_file(repo: str, file_path: str, content: str, commit_message: 
 
 @tool
 def drive_upload_file(file_path: str, mime_type: str = "text/plain") -> str:
-    """Google Driveにファイルをアップロードする。"""
+    """Google Driveにローカルファイルをアップロードする"""
     try:
-        if not os.path.exists("oauth_config.json") or not os.path.exists(file_path):
-            return f"OAuth設定が存在しないか、ファイル '{file_path}' が見つかりません。"
-        return f"ファイル '{file_path}' のGoogle Driveアップロード要求を受け付けました。(現在OAuth2コールバックリスナーの実装待ちです)"
+        if not GOOGLE_API_CLIENT_AVAILABLE:
+            return "エラー: google-api-python-client がインストールされていません。コンテナを再ビルドしてください。"
+        if not os.path.exists(file_path):
+            return f"エラー: ファイル '{file_path}' が見つかりません。"
+        creds = get_google_drive_credentials()
+        if not creds:
+            return "エラー: Google Driveの認証情報が設定されていないか有効期限が切れています。ダッシュボードから連携を行ってください。"
+        service = build("drive", "v3", credentials=creds)
+        file_name = os.path.basename(file_path)
+        file_metadata = {"name": file_name}
+        media = MediaFileUpload(file_path, mimetype=mime_type, resumable=True)
+        uploaded = service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields="id, name, webViewLink"
+        ).execute()
+        link = uploaded.get("webViewLink", "")
+        file_id = uploaded.get("id", "")
+        return f"成功: Google Driveにアップロードしました。(ファイル名: {file_name}, ID: {file_id}, リンク: {link})"
     except Exception as e:
         return f"アップロードエラー: {str(e)}"
+
+@tool
+def drive_list_files(query: str = "", max_results: int = 10) -> str:
+    """Google Drive上のファイルやフォルダの一覧・検索結果を取得する"""
+    try:
+        if not GOOGLE_API_CLIENT_AVAILABLE:
+            return "エラー: google-api-python-client がインストールされていません。コンテナを再ビルドしてください。"
+        creds = get_google_drive_credentials()
+        if not creds:
+            return "エラー: Google Driveの認証情報が設定されていません。ダッシュボードから連携を行ってください。"
+        service = build("drive", "v3", credentials=creds)
+        q = query.strip() if query.strip() else "trashed = false"
+        res = service.files().list(
+            q=q,
+            pageSize=max(1, min(max_results, 50)),
+            fields="files(id, name, mimeType, webViewLink, modifiedTime)"
+        ).execute()
+        files = res.get("files", [])
+        if not files:
+            return "Google Driveに対象のファイルは見つかりませんでした。"
+        lines = ["Google Drive ファイル一覧:"]
+        for f in files:
+            lines.append(f"- {f.get('name')} (ID: {f.get('id')}, 種別: {f.get('mimeType')}, URL: {f.get('webViewLink')})")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Google Drive一覧取得エラー: {str(e)}"
 
 @tool
 def execute_ssh_command(hostname: str, username: str, command: str, password: str = None, key_filename: str = None, key_content: str = None, port: int = 22) -> str:
@@ -500,5 +593,6 @@ tools = [
     notion_search, notion_create_page, notion_append_block, 
     search_recent_emails, get_email_details, send_email, create_email_draft,
     notify_boss_by_phone, notify_boss, web_search, read_knowledge, update_knowledge,
-    github_create_repo, drive_upload_file, execute_ssh_command, upload_file_ssh, download_file_ssh
+    github_create_repo, github_create_issue, github_read_repo_file, github_commit_file,
+    drive_upload_file, drive_list_files, execute_ssh_command, upload_file_ssh, download_file_ssh
 ] + browser_tools
