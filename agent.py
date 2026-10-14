@@ -11,7 +11,7 @@ load_dotenv()
 DB_URI = os.getenv("DB_URI")
 
 # 2. LLMの初期化 (Geminiに変更)
-llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0)
+llm = ChatGoogleGenerativeAI(model="gemini-3.8-flash", temperature=0)
 
 # 3. 厳格なシステムプロンプトの定義 (事前要件の反映)
 SYSTEM_PROMPT = """あなたは「JARVIS」、優秀なAIアシスタントです。

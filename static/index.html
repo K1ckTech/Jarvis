@@ -75,7 +75,7 @@
                 <div class="space-y-3">
                     <div>
                         <label class="block text-xs text-slate-400 mb-1">Model Name</label>
-                        <input type="text" id="llm-model" value="gemini-3.5-flash" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500" oninput="markUnverified()">
+                        <input type="text" id="llm-model" value="gemini-3.8-flash" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500" oninput="markUnverified()">
                     </div>
                     <div id="llm-base-url-container" class="hidden">
                         <label class="block text-xs text-slate-400 mb-1">Base URL</label>
@@ -380,7 +380,9 @@
     <!-- JavaScript連携 -->
     <script>
         // markedのオプション設定
-        marked.setOptions({ breaks: true, gfm: true });
+        if (typeof marked !== 'undefined' && marked.setOptions) {
+            marked.setOptions({ breaks: true, gfm: true });
+        }
 
         const chatForm = document.getElementById('chat-form');
         const userInput = document.getElementById('user-input');
@@ -475,8 +477,11 @@
             if (currentAbortController) {
                 currentAbortController.abort();
                 currentAbortController = null;
+                const el = document.getElementById('thinking-indicator');
+                if (el && el.parentNode) el.parentNode.removeChild(el);
                 appendMessage('System', '処理を中断しました。', 'system');
                 document.getElementById('stop-btn').classList.add('hidden');
+                isSending = false;
             }
         }
 
@@ -499,7 +504,7 @@
                 btnGemini.className = "flex-1 py-1.5 text-xs font-medium rounded-md bg-slate-800 text-slate-200 shadow-sm transition-all border border-slate-700";
                 btnOpenai.className = "flex-1 py-1.5 text-xs font-medium rounded-md text-slate-500 hover:text-slate-300 transition-all";
                 baseUrlContainer.classList.add('hidden');
-                if (modelInput.value === 'local-model') modelInput.value = 'gemini-3.5-flash';
+                if (modelInput.value === 'local-model') modelInput.value = 'gemini-3.8-flash';
             } else {
                 btnOpenai.className = "flex-1 py-1.5 text-xs font-medium rounded-md bg-slate-800 text-slate-200 shadow-sm transition-all border border-slate-700";
                 btnGemini.className = "flex-1 py-1.5 text-xs font-medium rounded-md text-slate-500 hover:text-slate-300 transition-all";
@@ -574,6 +579,7 @@
 
         userInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
+                if (e.isComposing || e.keyCode === 229) return;
                 e.preventDefault();
                 chatForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
             }
@@ -689,7 +695,10 @@
             
             const buttons = document.querySelectorAll('button[onclick^="handleConnect"]');
             buttons.forEach(async (btn) => {
-                const provider = btn.getAttribute('onclick').match(/'([^']+)'/)[1];
+                const onclickVal = btn.getAttribute('onclick') || '';
+                const match = onclickVal.match(/'([^']+)'/);
+                if (!match) return;
+                const provider = match[1];
                 try {
                     const res = await fetch(`/api/oauth/status/${encodeURIComponent(provider)}`);
                     const data = await res.json();
@@ -726,21 +735,44 @@
                 const res = await fetch('/api/chat/history/jarvis_main_thread');
                 if (res.ok) {
                     const data = await res.json();
-                    if (data.history && data.history.length !== currentHistoryCount) {
-                        const previousCount = currentHistoryCount;
-                        currentHistoryCount = data.history.length;
+                    const newHistory = data.history || [];
+                    
+                    if (currentHistoryCount === -1) {
+                        currentHistoryCount = newHistory.length;
                         chatLogs.innerHTML = '';
-                        if (data.history.length === 0) {
+                        if (newHistory.length === 0) {
                             chatLogs.innerHTML = defaultChatLogHTML;
                         } else {
-                            data.history.forEach((h, index) => {
-                                appendMessage(h.sender, h.text, h.type, false);
-                                // 新規に追加されたJARVISのメッセージのみ音声を再生
-                                if (previousCount !== -1 && index >= previousCount && h.type === 'jarvis') {
-                                    playJarvisVoice(h.text);
-                                }
-                            });
+                            newHistory.forEach(h => appendMessage(h.sender, h.text, h.type, false));
                         }
+                        return;
+                    }
+
+                    if (newHistory.length === 0 && currentHistoryCount !== 0) {
+                        currentHistoryCount = 0;
+                        chatLogs.innerHTML = defaultChatLogHTML;
+                        return;
+                    }
+
+                    if (newHistory.length > currentHistoryCount) {
+                        const newItems = newHistory.slice(currentHistoryCount);
+                        currentHistoryCount = newHistory.length;
+                        const welcomeMsg = chatLogs.querySelector('p');
+                        if (welcomeMsg && welcomeMsg.textContent.includes('システムダッシュボードへようこそ')) {
+                            chatLogs.innerHTML = '';
+                        }
+                        newItems.forEach(h => {
+                            const existingMessages = chatLogs.querySelectorAll('.group');
+                            const lastMsgEl = existingMessages[existingMessages.length - 1];
+                            const lastText = lastMsgEl ? (lastMsgEl.querySelector('.msg-content') || lastMsgEl.querySelector('.markdown-body'))?.innerText?.trim() : null;
+                            if (lastText && lastText === h.text.trim()) {
+                                return;
+                            }
+                            appendMessage(h.sender, h.text, h.type, false);
+                            if (h.type === 'jarvis') {
+                                playJarvisVoice(h.text);
+                            }
+                        });
                     }
                 }
             } catch (e) {
@@ -750,6 +782,7 @@
 
         async function clearUIHistory() {
             chatLogs.innerHTML = defaultChatLogHTML;
+            currentHistoryCount = 0;
             try {
                 await fetch('/api/chat/clear_ui', {
                     method: 'POST',
@@ -1104,14 +1137,35 @@
 
         chatForm.addEventListener('submit', async (e) => {
             e.preventDefault();
+            if (isSending) return;
             const text = userInput.value.trim();
             if (!text) return;
 
             userInput.value = '';
             userInput.style.height = 'auto';
 
+            appendMessage('You', text, 'user');
+
+            const thinkingDiv = document.createElement('div');
+            thinkingDiv.id = 'thinking-indicator';
+            thinkingDiv.className = "flex flex-col space-y-1";
+            thinkingDiv.innerHTML = `
+                <span class="text-xs text-slate-500">JARVIS</span>
+                <div class="bg-slate-800 text-slate-400 border border-slate-700/50 p-3 rounded-lg max-w-[80%] flex items-center space-x-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span class="text-xs">応答を生成中...</span>
+                </div>
+            `;
+            chatLogs.appendChild(thinkingDiv);
+            chatLogs.scrollTop = chatLogs.scrollHeight;
+
+            const removeThinking = () => {
+                const el = document.getElementById('thinking-indicator');
+                if (el && el.parentNode) el.parentNode.removeChild(el);
+            };
+
             const stopBtn = document.getElementById('stop-btn');
-            stopBtn.classList.remove('hidden');
+            if (stopBtn) stopBtn.classList.remove('hidden');
             
             currentAbortController = new AbortController();
             isSending = true;
@@ -1128,7 +1182,8 @@
                         message: text,
                         provider: provider,
                         model: model,
-                        base_url: baseUrl
+                        base_url: baseUrl,
+                        thread_id: 'jarvis_main_thread'
                     }),
                     signal: currentAbortController.signal
                 });
@@ -1148,6 +1203,8 @@
                     fullText += decoder.decode(value, { stream: true });
                 }
                 
+                removeThinking();
+
                 fullText = fullText.trim();
                 let data = null;
                 try {
@@ -1164,14 +1221,28 @@
                 if (data && data.reply) {
                     appendMessage('JARVIS', data.reply, 'jarvis');
                     playJarvisVoice(data.reply);
+                } else {
+                    appendMessage('JARVIS', '応答がありませんでした。', 'jarvis');
                 }
+                
+                try {
+                    const syncRes = await fetch('/api/chat/history/jarvis_main_thread');
+                    if (syncRes.ok) {
+                        const syncData = await syncRes.json();
+                        if (syncData.history) {
+                            currentHistoryCount = syncData.history.length;
+                        }
+                    }
+                } catch (_) {}
             } catch (err) {
+                removeThinking();
                 if (err.name !== 'AbortError') {
                     appendMessage('System', `通信エラー: ${err.message || '接続に失敗しました'}`, 'system');
                 }
             } finally {
+                removeThinking();
                 isSending = false;
-                stopBtn.classList.add('hidden');
+                if (stopBtn) stopBtn.classList.add('hidden');
             }
         });
 
@@ -1191,7 +1262,13 @@
                 contentHTML = `<div class="msg-content whitespace-pre-wrap">${temp.innerHTML}</div>`;
                 editHTML = `<button onclick="editMessage(this)" class="absolute top-1 right-2 opacity-0 group-hover:opacity-100 text-xs text-slate-300 hover:text-white bg-slate-600/80 rounded px-2 py-1 transition-opacity">編集</button>`;
             } else {
-                contentHTML = marked.parse(text);
+                if (typeof marked !== 'undefined' && marked.parse) {
+                    contentHTML = marked.parse(text || "");
+                } else {
+                    const temp = document.createElement('div');
+                    temp.textContent = text || "";
+                    contentHTML = `<div class="whitespace-pre-wrap">${temp.innerHTML}</div>`;
+                }
             }
 
             div.innerHTML = `

@@ -4,7 +4,7 @@ from typing import Optional
 class ChatRequest(BaseModel):
     message: str
     thread_id: str = "jarvis_main_thread"
-    model: str = "gemini-3.5-flash"
+    model: str = "gemini-3.8-flash"
     provider: str = "gemini"
     base_url: Optional[str] = ""
 

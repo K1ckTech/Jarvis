@@ -20,11 +20,16 @@ from routers import chat, oauth, knowledge, settings
 
 async def call_model(state: MessagesState, config: RunnableConfig):
     messages = state["messages"]
+    
+    clear_indices = [i for i, m in enumerate(messages) if getattr(m, 'content', '') == "[UI_CLEAR]"]
+    if clear_indices:
+        messages = messages[clear_indices[-1] + 1:]
+
     if not messages or not isinstance(messages[0], SystemMessage):
         messages = [SystemMessage(content=SYSTEM_PROMPT)] + messages
         
     config = config or {}
-    model_name = config.get("configurable", {}).get("model_name", "gemini-3.5-flash")
+    model_name = config.get("configurable", {}).get("model_name", "gemini-3.8-flash")
     provider = config.get("configurable", {}).get("provider", "gemini")
     base_url = config.get("configurable", {}).get("base_url", "")
     if provider == "openai":
@@ -54,12 +59,29 @@ async def call_model(state: MessagesState, config: RunnableConfig):
         llm = ChatGoogleGenerativeAI(model=model_name, temperature=0, streaming=True)
         
     filtered_messages = [m for m in messages if m.content != "[UI_CLEAR]"]
-    try:
-        llm_with_tools = llm.bind_tools(tools)
-        response = await llm_with_tools.ainvoke(filtered_messages, config=config)
-    except Exception as e:
-        print(f"[LLM Exec] Tool binding failed ({e}). Retrying with direct model call...")
-        response = await llm.ainvoke(filtered_messages, config=config)
+    retry_delays = [5, 12, 25, 30]
+    response = None
+    for attempt in range(len(retry_delays) + 1):
+        try:
+            try:
+                llm_with_tools = llm.bind_tools(tools)
+                response = await llm_with_tools.ainvoke(filtered_messages, config=config)
+            except Exception as bind_err:
+                bind_err_str = str(bind_err)
+                if "429" in bind_err_str or "RESOURCE_EXHAUSTED" in bind_err_str:
+                    raise bind_err
+                print(f"[LLM Exec] Tool binding failed ({bind_err}). Retrying with direct model call...")
+                clean_messages = [m for m in filtered_messages if getattr(m, 'type', '') in ('human', 'system') or (getattr(m, 'type', '') == 'ai' and not getattr(m, 'tool_calls', None))]
+                response = await llm.ainvoke(clean_messages, config=config)
+            break
+        except Exception as e:
+            err_str = str(e)
+            if ("429" in err_str or "RESOURCE_EXHAUSTED" in err_str) and attempt < len(retry_delays):
+                delay = retry_delays[attempt]
+                print(f"[LLM Exec RateLimit] 429 received. Backing off for {delay}s (attempt {attempt + 1}/{len(retry_delays)})...")
+                await asyncio.sleep(delay)
+                continue
+            raise e
     return {"messages": [response]}
 
 workflow = StateGraph(MessagesState)
@@ -76,17 +98,15 @@ app_graph = None
 import asyncio
 
 async def autonomous_agent_loop(graph, pool):
-    """JARVISがプロンプト無しに自律的に活動するためのバックグラウンドループ"""
     while True:
         try:
-            # 1時間(3600秒)おきに起動し、自律的に思考・行動する
             await asyncio.sleep(3600)
             print("[Agentic Loop] JARVIS is waking up for autonomous tasks...")
             
-            config = {"configurable": {"thread_id": "jarvis_autonomous_thread", "model_name": "gemini-3.5-flash"}}
+            config = {"configurable": {"thread_id": "jarvis_autonomous_thread", "model_name": "gemini-3.8-flash"}}
             trigger_msg = HumanMessage(content="[システム自動トリガー] 自主保守(Self-Maintenance)、未読メール確認、GitHub等の新着課題の確認を自律的に行ってください。何らかの問題や重要な通知があれば notify_boss_by_phone または Slack等で報告してください。異常がなければ何もせず待機してください。")
             
-            await asyncio.to_thread(graph.invoke, {"messages": [trigger_msg]}, config)
+            await graph.ainvoke({"messages": [trigger_msg]}, config)
         except asyncio.CancelledError:
             break
         except Exception as e:

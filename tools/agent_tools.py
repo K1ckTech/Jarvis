@@ -183,14 +183,55 @@ def create_email_draft(to_email: str, subject: str, body_text: str) -> str:
 @tool
 def web_search(query: str) -> str:
     """インターネット上でキーワード検索を行い情報を取得する"""
+    results_list = []
+    
+    # 1. DuckDuckGo Search の試行
     try:
-        from ddgs import DDGS
-        results = DDGS().text(query, max_results=5)
-        if not results:
-            return "検索結果が見つかりませんでした。"
-        return "ウェブ検索結果:\n" + "\n".join([f"- {r.get('title')} ({r.get('href')})\n  {r.get('body')}" for r in results])
-    except Exception as e:
-        return f"検索エラー: {str(e)}"
+        try:
+            from duckduckgo_search import DDGS
+        except ImportError:
+            from ddgs import DDGS
+        ddg_results = list(DDGS(timeout=10).text(query, max_results=5))
+        for r in ddg_results:
+            title = r.get("title", "")
+            href = r.get("href", "")
+            body = r.get("body", "")
+            if title and href:
+                results_list.append(f"- タイトル: {title}\n  URL: {href}\n  概要: {body}")
+    except Exception as ddg_err:
+        pass
+        
+    # 2. DuckDuckGoがブロックされた場合のフォールバック: Yahoo Japan 検索
+    if not results_list:
+        try:
+            import urllib.parse
+            from bs4 import BeautifulSoup
+            
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+            url = f"https://search.yahoo.co.jp/search?p={urllib.parse.quote(query)}"
+            res = requests.get(url, headers=headers, timeout=10)
+            if res.status_code == 200:
+                soup = BeautifulSoup(res.text, "html.parser")
+                for section in soup.select("section"):
+                    h3 = section.select_one("h3")
+                    a = section.select_one("a")
+                    p = section.select_one("p")
+                    if h3 and a and a.get("href"):
+                        href = a.get("href")
+                        title = h3.get_text(strip=True)
+                        if "search.yahoo.co.jp" not in href and "listing.yahoo.co.jp" not in href and href.startswith("http") and "他の人はこちらも質問" not in title:
+                            desc = p.get_text(strip=True) if p else ""
+                            results_list.append(f"- タイトル: {title}\n  URL: {href}\n  概要: {desc}")
+                    if len(results_list) >= 5:
+                        break
+        except Exception:
+            pass
+
+    if results_list:
+        return "ウェブ検索結果:\n" + "\n".join(results_list)
+    return f"「{query}」に関する検索結果は見つかりませんでした。別のキーワードでお試しください。"
 
 @tool
 def read_knowledge() -> str:
@@ -552,5 +593,6 @@ tools = [
     notion_search, notion_create_page, notion_append_block, 
     search_recent_emails, get_email_details, send_email, create_email_draft,
     notify_boss_by_phone, notify_boss, web_search, read_knowledge, update_knowledge,
-    github_create_repo, drive_upload_file, drive_list_files, execute_ssh_command, upload_file_ssh, download_file_ssh
+    github_create_repo, github_create_issue, github_read_repo_file, github_commit_file,
+    drive_upload_file, drive_list_files, execute_ssh_command, upload_file_ssh, download_file_ssh
 ] + browser_tools
