@@ -4,6 +4,7 @@ requests
 PyJWT
 paramiko
 duckduckgo-search
+ddgs
 gTTS
 soundfile
 numpy
@@ -15,6 +16,7 @@ langchain-google-genai
 langchain-openai
 langchain-ollama
 psycopg[pool]
+psycopg-binary
 python-multipart
 python-dotenv
 playwright

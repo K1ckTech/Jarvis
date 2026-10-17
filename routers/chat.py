@@ -73,7 +73,7 @@ async def chat_endpoint(req: ChatRequest, request: Request):
                                 
                                 status_msg = None
                                 if tool_name == "web_search":
-                                    q = tool_args.get("query", "")
+                                    q = tool_args.get("query") or tool_args.get("keyword") or tool_args.get("keywords") or tool_args.get("search_query") or tool_args.get("q") or ""
                                     status_msg = f"「{q}」についてWeb検索を開始します..." if q else "Web検索を実行して最新情報を調査します..."
                                 elif tool_name == "notion_search":
                                     status_msg = "Notion内のタスク・情報を検索しています..."

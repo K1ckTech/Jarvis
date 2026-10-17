@@ -2,6 +2,7 @@ import os
 import time
 import json
 import base64
+import re
 import requests
 import jwt # requires PyJWT
 import paramiko # requires paramiko
@@ -180,58 +181,113 @@ def create_email_draft(to_email: str, subject: str, body_text: str) -> str:
     except Exception as e:
         return f"Gmail通信エラー: {str(e)}"
 
-@tool
-def web_search(query: str) -> str:
-    """インターネット上でキーワード検索を行い情報を取得する"""
-    results_list = []
-    
-    # 1. DuckDuckGo Search の試行
-    try:
+def _clean_bing_url(url: str) -> str:
+    match = re.search(r'[?&]u=a1([a-zA-Z0-9_\-]+)', url)
+    if match:
         try:
-            from duckduckgo_search import DDGS
-        except ImportError:
-            from ddgs import DDGS
-        ddg_results = list(DDGS(timeout=10).text(query, max_results=5))
-        for r in ddg_results:
-            title = r.get("title", "")
-            href = r.get("href", "")
-            body = r.get("body", "")
-            if title and href:
-                results_list.append(f"- タイトル: {title}\n  URL: {href}\n  概要: {body}")
-    except Exception as ddg_err:
+            b64 = match.group(1).replace('-', '+').replace('_', '/')
+            b64 += '=' * ((4 - len(b64) % 4) % 4)
+            decoded = base64.b64decode(b64).decode('utf-8', errors='ignore')
+            if decoded.startswith('http'):
+                return decoded
+        except Exception:
+            pass
+    return url
+
+@tool
+def web_search(query: str = "", keyword: str = "", keywords: str = "", search_query: str = "", q: str = "", **kwargs) -> str:
+    """インターネット上でキーワード検索を行い最新情報やWebサイト情報を取得します。
+    新規顧客の開拓、市場調査、最新ニュース、企業情報、技術情報などを調べる際に使用します。
+
+    Args:
+        query: 検索キーワードまたは質問文（例: 'Web制作 新規顧客開拓'）
+    """
+    search_term = (query or keyword or keywords or search_query or q or kwargs.get("text") or "").strip()
+    if not search_term and kwargs:
+        if "kwargs" in kwargs and isinstance(kwargs["kwargs"], dict):
+            inner = kwargs["kwargs"]
+            search_term = (inner.get("query") or inner.get("keyword") or inner.get("keywords") or inner.get("search_query") or inner.get("q") or "").strip()
+        if not search_term:
+            for v in kwargs.values():
+                if isinstance(v, str) and v.strip():
+                    search_term = v.strip()
+                    break
+    if not search_term:
+        return "検索キーワードが指定されていません。検索したい内容をキーワードで指定してください。"
+
+    results_list = []
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept-Language": "ja,en-US;q=0.9,en;q=0.8"
+    }
+
+    # 1. Yahoo Japan Search
+    try:
+        import urllib.parse
+        from bs4 import BeautifulSoup
+
+        url = f"https://search.yahoo.co.jp/search?p={urllib.parse.quote(search_term)}"
+        res = requests.get(url, headers=headers, timeout=6)
+        if res.status_code == 200:
+            soup = BeautifulSoup(res.text, "html.parser")
+            for section in soup.select("section"):
+                h3 = section.select_one("h3")
+                a = (h3.select_one("a") if h3 else None) or section.select_one("a:has(h3)") or section.select_one("a[href^='http']")
+                p = section.select_one("p")
+                if h3 and a and a.get("href"):
+                    href = a.get("href")
+                    title = h3.get_text(strip=True)
+                    if "search.yahoo.co.jp" not in href and "listing.yahoo.co.jp" not in href and href.startswith("http") and "他の人はこちらも質問" not in title:
+                        desc = p.get_text(strip=True) if p else ""
+                        results_list.append(f"- タイトル: {title}\n  URL: {href}\n  概要: {desc}")
+                if len(results_list) >= 5:
+                    break
+    except Exception:
         pass
-        
-    # 2. DuckDuckGoがブロックされた場合のフォールバック: Yahoo Japan 検索
+
+    # 2. Bing Search (Fallback for global/VPS environments)
     if not results_list:
         try:
             import urllib.parse
             from bs4 import BeautifulSoup
-            
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            }
-            url = f"https://search.yahoo.co.jp/search?p={urllib.parse.quote(query)}"
-            res = requests.get(url, headers=headers, timeout=10)
+
+            url = f"https://www.bing.com/search?q={urllib.parse.quote(search_term)}&setlang=ja"
+            res = requests.get(url, headers=headers, timeout=6)
             if res.status_code == 200:
                 soup = BeautifulSoup(res.text, "html.parser")
-                for section in soup.select("section"):
-                    h3 = section.select_one("h3")
-                    a = section.select_one("a")
-                    p = section.select_one("p")
-                    if h3 and a and a.get("href"):
-                        href = a.get("href")
-                        title = h3.get_text(strip=True)
-                        if "search.yahoo.co.jp" not in href and "listing.yahoo.co.jp" not in href and href.startswith("http") and "他の人はこちらも質問" not in title:
-                            desc = p.get_text(strip=True) if p else ""
-                            results_list.append(f"- タイトル: {title}\n  URL: {href}\n  概要: {desc}")
+                for li in soup.select("li.b_algo"):
+                    h2_a = li.select_one("h2 a")
+                    p = li.select_one(".b_caption p, .b_lineclamp2, p")
+                    if h2_a and h2_a.get("href"):
+                        href = _clean_bing_url(h2_a.get("href"))
+                        title = h2_a.get_text(strip=True)
+                        desc = p.get_text(strip=True) if p else ""
+                        results_list.append(f"- タイトル: {title}\n  URL: {href}\n  概要: {desc}")
                     if len(results_list) >= 5:
                         break
         except Exception:
             pass
 
+    # 3. DuckDuckGo Search (ddgs)
+    if not results_list:
+        try:
+            try:
+                from ddgs import DDGS
+            except ImportError:
+                from duckduckgo_search import DDGS
+            ddg_results = list(DDGS(timeout=5).text(search_term, max_results=5))
+            for r in ddg_results:
+                title = r.get("title", "")
+                href = r.get("href", "")
+                body = r.get("body", "")
+                if title and href:
+                    results_list.append(f"- タイトル: {title}\n  URL: {href}\n  概要: {body}")
+        except Exception:
+            pass
+
     if results_list:
         return "ウェブ検索結果:\n" + "\n".join(results_list)
-    return f"「{query}」に関する検索結果は見つかりませんでした。別のキーワードでお試しください。"
+    return f"「{search_term}」に関する検索結果は見つかりませんでした。別のキーワードでお試しください。"
 
 @tool
 def read_knowledge() -> str:
