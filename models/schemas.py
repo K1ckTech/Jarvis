@@ -7,6 +7,7 @@ class ChatRequest(BaseModel):
     model: str = "gemini-3.8-flash"
     provider: str = "gemini"
     base_url: Optional[str] = ""
+    api_key: Optional[str] = ""
 
 class ChatClearRequest(BaseModel):
     thread_id: str = "jarvis_main_thread"
@@ -31,3 +32,4 @@ class PingLLMRequest(BaseModel):
     provider: str
     model: str
     base_url: str = ""
+    api_key: Optional[str] = ""

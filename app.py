@@ -32,8 +32,9 @@ async def call_model(state: MessagesState, config: RunnableConfig):
     model_name = config.get("configurable", {}).get("model_name", "gemini-3.8-flash")
     provider = config.get("configurable", {}).get("provider", "gemini")
     base_url = config.get("configurable", {}).get("base_url", "")
+    configurable_api_key = config.get("configurable", {}).get("api_key")
+    api_key = configurable_api_key.strip() if configurable_api_key and str(configurable_api_key).strip() else os.getenv("LOCAL_LLM_KEY", "dummy")
     if provider == "openai":
-        api_key = os.getenv("LOCAL_LLM_KEY", "dummy")
         url = base_url if base_url else os.getenv("LOCAL_LLM_URL", "http://localhost:8000/v1")
         if "11434" in url and not url.rstrip("/").endswith("/v1"):
             url = url.rstrip("/") + "/v1"
@@ -49,10 +50,14 @@ async def call_model(state: MessagesState, config: RunnableConfig):
     elif provider == "ollama":
         url = base_url if base_url else os.getenv("LOCAL_LLM_URL", "http://localhost:11434")
         print(f"[LLM Exec] Using Ollama ({model_name}) at {url}")
+        client_kwargs = {}
+        if configurable_api_key and str(configurable_api_key).strip():
+            client_kwargs["headers"] = {"Authorization": f"Bearer {configurable_api_key.strip()}"}
         llm = ChatOllama(
             model=model_name,
             base_url=url,
-            temperature=0
+            temperature=0,
+            client_kwargs=client_kwargs if client_kwargs else None
         )
     else:
         print(f"[LLM Exec] Using Google Gemini ({model_name})")

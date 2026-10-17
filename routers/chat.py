@@ -40,7 +40,8 @@ async def chat_endpoint(req: ChatRequest, request: Request):
             "thread_id": req.thread_id, 
             "model_name": req.model,
             "provider": req.provider,
-            "base_url": req.base_url
+            "base_url": req.base_url,
+            "api_key": req.api_key or ""
         }
     }
     
@@ -171,7 +172,7 @@ def ping_llm(req: PingLLMRequest):
         if req.provider == "openai":
             from langchain_openai import ChatOpenAI
             import os
-            api_key = os.getenv("LOCAL_LLM_KEY", "dummy")
+            api_key = req.api_key.strip() if req.api_key and req.api_key.strip() else os.getenv("LOCAL_LLM_KEY", "dummy")
             url = req.base_url if req.base_url else os.getenv("LOCAL_LLM_URL", "http://localhost:8000/v1")
             if "11434" in url and not url.rstrip("/").endswith("/v1"):
                 url = url.rstrip("/") + "/v1"
@@ -181,7 +182,10 @@ def ping_llm(req: PingLLMRequest):
             from langchain_ollama import ChatOllama
             import os
             url = req.base_url if req.base_url else os.getenv("LOCAL_LLM_URL", "http://localhost:11434")
-            llm = ChatOllama(model=req.model, base_url=url)
+            client_kwargs = {}
+            if req.api_key and req.api_key.strip():
+                client_kwargs["headers"] = {"Authorization": f"Bearer {req.api_key.strip()}"}
+            llm = ChatOllama(model=req.model, base_url=url, client_kwargs=client_kwargs if client_kwargs else None)
             llm.invoke("Hi")
         else:
             from langchain_google_genai import ChatGoogleGenerativeAI

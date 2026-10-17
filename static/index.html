@@ -81,6 +81,19 @@
                         <label class="block text-xs text-slate-400 mb-1">Base URL</label>
                         <input type="text" id="llm-base-url" value="http://host.docker.internal:8000/v1" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500" oninput="markUnverified()">
                     </div>
+                    <div id="llm-api-key-container" class="hidden">
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-xs text-slate-400">API Key</label>
+                            <span class="text-[10px] text-slate-500">任意 (認証が必要な場合)</span>
+                        </div>
+                        <div class="relative">
+                            <input type="password" id="llm-api-key" placeholder="dummy (不要な場合は空欄可)" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-1.5 text-sm text-slate-200 pr-9 focus:outline-none focus:border-emerald-500" oninput="markUnverified()">
+                            <button type="button" onclick="toggleApiKeyVisibility()" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors p-0.5" title="表示/非表示の切り替え">
+                                <svg id="eye-icon-show" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                                <svg id="eye-icon-hide" class="w-4 h-4 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18"></path></svg>
+                            </button>
+                        </div>
+                    </div>
                     
                     <button type="button" onclick="verifyLlmConnection()" id="btn-verify-llm" class="w-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs py-2 rounded transition-colors flex justify-center items-center gap-2 mt-2">
                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
@@ -492,23 +505,41 @@
             saveLlmConfig();
         }
 
+        function toggleApiKeyVisibility() {
+            const input = document.getElementById('llm-api-key');
+            const showIcon = document.getElementById('eye-icon-show');
+            const hideIcon = document.getElementById('eye-icon-hide');
+            if (input.type === 'password') {
+                input.type = 'text';
+                showIcon.classList.add('hidden');
+                hideIcon.classList.remove('hidden');
+            } else {
+                input.type = 'password';
+                showIcon.classList.remove('hidden');
+                hideIcon.classList.add('hidden');
+            }
+        }
+
         function setProviderUI(provider) {
             document.getElementById('llm-provider').value = provider;
             
             const btnGemini = document.getElementById('btn-provider-gemini');
             const btnOpenai = document.getElementById('btn-provider-openai');
             const baseUrlContainer = document.getElementById('llm-base-url-container');
+            const apiKeyContainer = document.getElementById('llm-api-key-container');
             const modelInput = document.getElementById('llm-model');
 
             if (provider === 'gemini') {
                 btnGemini.className = "flex-1 py-1.5 text-xs font-medium rounded-md bg-slate-800 text-slate-200 shadow-sm transition-all border border-slate-700";
                 btnOpenai.className = "flex-1 py-1.5 text-xs font-medium rounded-md text-slate-500 hover:text-slate-300 transition-all";
                 baseUrlContainer.classList.add('hidden');
+                apiKeyContainer.classList.add('hidden');
                 if (modelInput.value === 'local-model') modelInput.value = 'gemini-3.8-flash';
             } else {
                 btnOpenai.className = "flex-1 py-1.5 text-xs font-medium rounded-md bg-slate-800 text-slate-200 shadow-sm transition-all border border-slate-700";
                 btnGemini.className = "flex-1 py-1.5 text-xs font-medium rounded-md text-slate-500 hover:text-slate-300 transition-all";
                 baseUrlContainer.classList.remove('hidden');
+                apiKeyContainer.classList.remove('hidden');
                 if (modelInput.value.startsWith('gemini')) modelInput.value = 'local-model';
             }
             markUnverified();
@@ -531,7 +562,8 @@
                     body: JSON.stringify({
                         provider: document.getElementById('llm-provider').value,
                         model: document.getElementById('llm-model').value,
-                        base_url: document.getElementById('llm-base-url').value
+                        base_url: document.getElementById('llm-base-url').value,
+                        api_key: document.getElementById('llm-api-key').value
                     })
                 });
                 const data = await res.json();
@@ -559,22 +591,35 @@
             localStorage.setItem('jarvis_llm_provider', document.getElementById('llm-provider').value);
             localStorage.setItem('jarvis_llm_model', document.getElementById('llm-model').value);
             localStorage.setItem('jarvis_llm_base_url', document.getElementById('llm-base-url').value);
+            localStorage.setItem('jarvis_llm_api_key', document.getElementById('llm-api-key').value);
         }
 
         function loadLlmConfig() {
             const provider = localStorage.getItem('jarvis_llm_provider');
             const model = localStorage.getItem('jarvis_llm_model');
             const baseUrl = localStorage.getItem('jarvis_llm_base_url');
+            const apiKey = localStorage.getItem('jarvis_llm_api_key');
             
             if (provider) {
                 setProviderUI(provider);
                 if (provider === 'openai') {
                     const baseUrlContainer = document.getElementById('llm-base-url-container');
+                    const apiKeyContainer = document.getElementById('llm-api-key-container');
                     baseUrlContainer.classList.remove('hidden');
+                    apiKeyContainer.classList.remove('hidden');
                 }
             }
             if (model) document.getElementById('llm-model').value = model;
             if (baseUrl) document.getElementById('llm-base-url').value = baseUrl;
+            if (apiKey) {
+                document.getElementById('llm-api-key').value = apiKey;
+            } else {
+                fetch('/api/settings').then(r => r.json()).then(data => {
+                    if (data && data.settings && data.settings.LOCAL_LLM_KEY && !document.getElementById('llm-api-key').value) {
+                        document.getElementById('llm-api-key').value = data.settings.LOCAL_LLM_KEY;
+                    }
+                }).catch(() => {});
+            }
         }
 
         userInput.addEventListener('keydown', function(e) {
@@ -1179,6 +1224,7 @@
                 const provider = document.getElementById('llm-provider').value;
                 const model = document.getElementById('llm-model').value;
                 const baseUrl = document.getElementById('llm-base-url').value;
+                const apiKey = document.getElementById('llm-api-key').value;
 
                 const res = await fetch('/api/chat', {
                     method: 'POST',
@@ -1188,6 +1234,7 @@
                         provider: provider,
                         model: model,
                         base_url: baseUrl,
+                        api_key: apiKey,
                         thread_id: 'jarvis_main_thread'
                     }),
                     signal: currentAbortController.signal
