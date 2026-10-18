@@ -31,7 +31,7 @@ def _extract_text(content) -> str:
         return "".join(parts)
     return str(content)
 
-from core.config import resolve_local_url, has_pending_action
+from core.config import resolve_local_url
 
 @router.post("")
 async def chat_endpoint(req: ChatRequest, request: Request):
@@ -45,7 +45,8 @@ async def chat_endpoint(req: ChatRequest, request: Request):
             "provider": req.provider,
             "base_url": resolved_base_url,
             "api_key": req.api_key or ""
-        }
+        },
+        "recursion_limit": 100
     }
     
     async def generate_response():
@@ -83,8 +84,6 @@ async def chat_endpoint(req: ChatRequest, request: Request):
                 elif item_type == "chunk":
                     chunk = item_data
                     for node_name, node_output in chunk.items():
-                        if node_name == "auto_continue":
-                            continue
                         if node_name == "agent":
                             node_msgs = node_output.get("messages", [])
                             for m in node_msgs:
@@ -93,13 +92,11 @@ async def chat_endpoint(req: ChatRequest, request: Request):
                                 text = _extract_text(content).strip()
                                 
                                 if text:
-                                    has_pending = has_pending_action(text)
-                                    parts = [p.strip() for p in text.split("---MESSAGE_BREAK---") if p.strip()]
-                                    for idx, part in enumerate(parts):
-                                        is_last_part = (idx == len(parts) - 1)
-                                        is_done = is_last_part and not bool(tool_calls) and not has_pending
+                                    clean_text = text.replace("---MESSAGE_BREAK---", "\n\n").strip()
+                                    if clean_text:
+                                        is_done = not bool(tool_calls)
                                         emitted_any = True
-                                        yield (json.dumps({"reply": part, "done": is_done}) + "\n").encode('utf-8')
+                                        yield (json.dumps({"reply": clean_text, "done": is_done}) + "\n").encode('utf-8')
                                 elif tool_calls:
                                     tool_name = tool_calls[0].get("name", "") if isinstance(tool_calls[0], dict) else getattr(tool_calls[0], "name", "")
                                     tool_args = tool_calls[0].get("args", {}) if isinstance(tool_calls[0], dict) else getattr(tool_calls[0], "args", {})
@@ -194,9 +191,9 @@ async def get_chat_history(thread_id: str, request: Request):
         elif m_type == "ai":
             raw_text = _extract_text(m_content)
             if raw_text:
-                parts = [p.strip() for p in raw_text.split("---MESSAGE_BREAK---") if p.strip()]
-                for part in parts:
-                    history.append({"sender": "JARVIS", "text": part, "type": "jarvis"})
+                clean_text = raw_text.replace("---MESSAGE_BREAK---", "\n\n").strip()
+                if clean_text:
+                    history.append({"sender": "JARVIS", "text": clean_text, "type": "jarvis"})
             
     return {"history": history}
 
