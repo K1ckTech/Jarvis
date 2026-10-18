@@ -2,7 +2,7 @@ import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from psycopg_pool import AsyncConnectionPool
 
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -14,47 +14,84 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_ollama import ChatOllama
 
-from core.config import DB_URI, SYSTEM_PROMPT
+from core.config import DB_URI, SYSTEM_PROMPT, resolve_local_url
 from tools.agent_tools import tools
 from routers import chat, oauth, knowledge, settings
 
 async def call_model(state: MessagesState, config: RunnableConfig):
     messages = state["messages"]
+    
+    clear_indices = [i for i, m in enumerate(messages) if getattr(m, 'content', '') == "[UI_CLEAR]"]
+    if clear_indices:
+        messages = messages[clear_indices[-1] + 1:]
+
     if not messages or not isinstance(messages[0], SystemMessage):
         messages = [SystemMessage(content=SYSTEM_PROMPT)] + messages
         
     config = config or {}
-    model_name = config.get("configurable", {}).get("model_name", "gemini-3.5-flash")
+    model_name = config.get("configurable", {}).get("model_name", "gemini-3.8-flash")
     provider = config.get("configurable", {}).get("provider", "gemini")
     base_url = config.get("configurable", {}).get("base_url", "")
-    
+    configurable_api_key = config.get("configurable", {}).get("api_key")
+    api_key = configurable_api_key.strip() if configurable_api_key and str(configurable_api_key).strip() else os.getenv("LOCAL_LLM_KEY", "dummy")
+    llm_timeout = int(os.getenv("LLM_TIMEOUT", "60"))
+
     if provider == "openai":
-        api_key = os.getenv("LOCAL_LLM_KEY", "dummy")
         url = base_url if base_url else os.getenv("LOCAL_LLM_URL", "http://localhost:8000/v1")
+        url = resolve_local_url(url)
+        if "11434" in url and not url.rstrip("/").endswith("/v1"):
+            url = url.rstrip("/") + "/v1"
         print(f"[LLM Exec] Using Local LLM ({model_name}) at {url}")
         llm = ChatOpenAI(
             model=model_name,
             base_url=url,
             api_key=api_key,
             temperature=0,
-            streaming=True
+            timeout=llm_timeout,
+            max_retries=1
         )
     elif provider == "ollama":
         url = base_url if base_url else os.getenv("LOCAL_LLM_URL", "http://localhost:11434")
+        url = resolve_local_url(url)
         print(f"[LLM Exec] Using Ollama ({model_name}) at {url}")
+        client_kwargs = {}
+        if configurable_api_key and str(configurable_api_key).strip():
+            client_kwargs["headers"] = {"Authorization": f"Bearer {configurable_api_key.strip()}"}
         llm = ChatOllama(
             model=model_name,
             base_url=url,
-            temperature=0
+            temperature=0,
+            client_kwargs=client_kwargs if client_kwargs else None
         )
     else:
         print(f"[LLM Exec] Using Google Gemini ({model_name})")
-        llm = ChatGoogleGenerativeAI(model=model_name, temperature=0, streaming=True)
+        gemini_model = os.getenv("GEMINI_MODEL", model_name)
+        llm = ChatGoogleGenerativeAI(model=gemini_model, temperature=0, streaming=True, request_timeout=llm_timeout)
         
-    llm_with_tools = llm.bind_tools(tools)
-    
     filtered_messages = [m for m in messages if m.content != "[UI_CLEAR]"]
-    response = await llm_with_tools.ainvoke(filtered_messages, config=config)
+    retry_delays = [3, 8, 15, 20]
+    response = None
+    for attempt in range(len(retry_delays) + 1):
+        try:
+            try:
+                llm_with_tools = llm.bind_tools(tools)
+                response = await llm_with_tools.ainvoke(filtered_messages, config=config)
+            except Exception as bind_err:
+                bind_err_str = str(bind_err)
+                if "429" in bind_err_str or "RESOURCE_EXHAUSTED" in bind_err_str:
+                    raise bind_err
+                print(f"[LLM Exec] Tool binding failed ({bind_err}). Retrying with direct model call...")
+                clean_messages = [m for m in filtered_messages if getattr(m, 'type', '') in ('human', 'system') or (getattr(m, 'type', '') == 'ai' and not getattr(m, 'tool_calls', None))]
+                response = await llm.ainvoke(clean_messages, config=config)
+            break
+        except Exception as e:
+            err_str = str(e)
+            if ("429" in err_str or "RESOURCE_EXHAUSTED" in err_str) and attempt < len(retry_delays):
+                delay = retry_delays[attempt]
+                print(f"[LLM Exec RateLimit] 429 received. Backing off for {delay}s (attempt {attempt + 1}/{len(retry_delays)})...")
+                await asyncio.sleep(delay)
+                continue
+            raise e
     return {"messages": [response]}
 
 workflow = StateGraph(MessagesState)
@@ -71,17 +108,15 @@ app_graph = None
 import asyncio
 
 async def autonomous_agent_loop(graph, pool):
-    """JARVISがプロンプト無しに自律的に活動するためのバックグラウンドループ"""
     while True:
         try:
-            # 1時間(3600秒)おきに起動し、自律的に思考・行動する
             await asyncio.sleep(3600)
             print("[Agentic Loop] JARVIS is waking up for autonomous tasks...")
             
-            config = {"configurable": {"thread_id": "jarvis_autonomous_thread", "model_name": "gemini-3.5-flash"}}
+            config = {"configurable": {"thread_id": "jarvis_autonomous_thread", "model_name": "gemini-3.8-flash"}}
             trigger_msg = HumanMessage(content="[システム自動トリガー] 自主保守(Self-Maintenance)、未読メール確認、GitHub等の新着課題の確認を自律的に行ってください。何らかの問題や重要な通知があれば notify_boss_by_phone または Slack等で報告してください。異常がなければ何もせず待機してください。")
             
-            await asyncio.to_thread(graph.invoke, {"messages": [trigger_msg]}, config)
+            await graph.ainvoke({"messages": [trigger_msg]}, config)
         except asyncio.CancelledError:
             break
         except Exception as e:
@@ -117,13 +152,15 @@ app = FastAPI(lifespan=lifespan)
 
 @app.middleware("http")
 async def ip_restriction_middleware(request: Request, call_next):
-    client_ip = request.client.host
-    # Cloudflare Tunnelからのアクセス(172.18.0.1)のみ許可
-    if client_ip != "172.18.0.1":
-        return JSONResponse(
-            status_code=403, 
-            content={"detail": "Forbidden: Access restricted."}
-        )
+    allowed_ips_env = os.getenv("ALLOWED_IPS", "").strip()
+    if allowed_ips_env:
+        allowed_ips = [ip.strip() for ip in allowed_ips_env.split(",") if ip.strip()]
+        client_ip = request.client.host
+        if client_ip not in allowed_ips:
+            return JSONResponse(
+                status_code=403, 
+                content={"detail": "Forbidden: Access restricted."}
+            )
     return await call_next(request)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")

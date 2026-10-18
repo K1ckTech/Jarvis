@@ -12,7 +12,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 # 1. 環境設定とLLMの初期化
 load_dotenv()
 DB_URI = os.getenv("DB_URI")
-llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0)
+llm = ChatGoogleGenerativeAI(model="gemini-3.8-flash", temperature=0)
 
 # 2. システムプロンプトとワークフローの定義（agent.pyと同じ）
 SYSTEM_PROMPT = """あなたは「JARVIS」、優秀なAIアシスタントです。

@@ -75,11 +75,24 @@
                 <div class="space-y-3">
                     <div>
                         <label class="block text-xs text-slate-400 mb-1">Model Name</label>
-                        <input type="text" id="llm-model" value="gemini-3.5-flash" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500" oninput="markUnverified()">
+                        <input type="text" id="llm-model" value="gemini-3.8-flash" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500" oninput="markUnverified()">
                     </div>
                     <div id="llm-base-url-container" class="hidden">
                         <label class="block text-xs text-slate-400 mb-1">Base URL</label>
                         <input type="text" id="llm-base-url" value="http://host.docker.internal:8000/v1" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500" oninput="markUnverified()">
+                    </div>
+                    <div id="llm-api-key-container" class="hidden">
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-xs text-slate-400">API Key</label>
+                            <span class="text-[10px] text-slate-500">任意 (認証が必要な場合)</span>
+                        </div>
+                        <div class="relative">
+                            <input type="password" id="llm-api-key" placeholder="dummy (不要な場合は空欄可)" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-1.5 text-sm text-slate-200 pr-9 focus:outline-none focus:border-emerald-500" oninput="markUnverified()">
+                            <button type="button" onclick="toggleApiKeyVisibility()" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors p-0.5" title="表示/非表示の切り替え">
+                                <svg id="eye-icon-show" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                                <svg id="eye-icon-hide" class="w-4 h-4 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18"></path></svg>
+                            </button>
+                        </div>
                     </div>
                     
                     <button type="button" onclick="verifyLlmConnection()" id="btn-verify-llm" class="w-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs py-2 rounded transition-colors flex justify-center items-center gap-2 mt-2">
@@ -209,7 +222,17 @@
         <div class="md:col-span-2 bg-slate-900 border border-slate-800 rounded-lg flex flex-col h-[calc(100dvh-100px)] md:h-[650px] order-1 md:order-2">
             <div class="p-4 border-b border-slate-800 flex justify-between items-center">
                 <h2 class="text-sm font-medium text-slate-300">Command & Chat Interface</h2>
-                <button onclick="clearUIHistory()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 px-2 py-1 rounded border border-slate-700 transition" title="画面上の履歴のみをクリア（記憶は保持されます）">Clear UI</button>
+                <div class="flex items-center space-x-4">
+                    <label class="flex items-center space-x-2 cursor-pointer" title="JARVISの音声読み上げのON/OFFを切り替えます">
+                        <span class="text-xs text-slate-400 font-medium">JARVIS Voice</span>
+                        <div class="relative">
+                            <input type="checkbox" id="jarvis-voice-toggle" class="sr-only peer">
+                            <div class="block bg-slate-800 w-8 h-5 rounded-full border border-slate-700 peer-checked:bg-emerald-900 peer-checked:border-emerald-600 transition-colors"></div>
+                            <div class="absolute left-1 top-1 bg-slate-400 w-3 h-3 rounded-full transition-transform peer-checked:translate-x-3 peer-checked:bg-emerald-400"></div>
+                        </div>
+                    </label>
+                    <button onclick="clearUIHistory()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 px-2 py-1 rounded border border-slate-700 transition" title="画面上の履歴のみをクリア（記憶は保持されます）">Clear UI</button>
+                </div>
             </div>
             <!-- チャットログ表示エリア -->
             <div id="chat-logs" class="flex-1 p-4 overflow-y-auto space-y-4 text-sm">
@@ -223,6 +246,9 @@
             <!-- 入力フォーム -->
             <div class="p-4 border-t border-slate-800 bg-slate-900/50">
                 <form id="chat-form" class="flex gap-3 items-end">
+                    <button type="button" id="voice-btn" onclick="toggleVoiceInput()" class="bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 w-[42px] h-[42px] rounded border border-slate-700 transition-colors flex items-center justify-center shrink-0" title="音声入力">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+                    </button>
                     <textarea id="user-input" placeholder="JARVISへ指示を入力... (Shift+Enterで改行)" rows="1" class="flex-1 bg-slate-950 border border-slate-700 rounded px-4 py-2.5 text-sm focus:outline-none focus:border-slate-500 text-slate-100 placeholder-slate-500 resize-none max-h-32" style="min-height: 42px;" oninput="this.style.height = 'auto'; this.style.height = this.scrollHeight + 'px'"></textarea>
                     <button type="button" id="stop-btn" onclick="stopProcessing()" class="hidden bg-red-600/80 text-white font-medium px-5 py-2.5 rounded text-sm hover:bg-red-500 transition-colors h-[42px]">停止</button>
                     <button type="submit" class="bg-slate-100 text-slate-950 font-medium px-5 py-2.5 rounded text-sm hover:bg-slate-200 transition-colors h-[42px]">送信</button>
@@ -232,29 +258,94 @@
     </main>
 
     <!-- OAuth設定モーダル -->
-    <div id="oauth-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center">
-        <div class="bg-slate-900 border border-slate-700 rounded-lg p-6 w-full max-w-md shadow-2xl">
-            <div class="flex justify-between items-center mb-5">
+    <div id="oauth-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-lg p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
                 <h3 class="text-lg font-medium text-slate-200"><span id="oauth-provider-name">Provider</span> Setup</h3>
                 <button onclick="closeOauthModal()" class="text-slate-400 hover:text-slate-200">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
             </div>
-            <p id="oauth-instructions" class="text-xs text-slate-400 mb-5">連携のためには各プラットフォームの開発者ポータルでOAuthアプリを作成し、Client IDとClient Secretを取得する必要があります。</p>
-            <form id="oauth-form" class="space-y-4">
-                <input type="hidden" id="oauth-provider-id">
-                <div id="field-client-id-container">
-                    <label id="label-client-id" class="block text-xs text-slate-400 mb-1">Client ID</label>
-                    <input type="text" id="oauth-client-id" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500">
+
+            <!-- Google Drive専用コンテナ -->
+            <div id="oauth-drive-container" class="space-y-4 hidden">
+                <p class="text-xs text-slate-400">Google Cloud Console で OAuth 2.0 クライアント（ウェブ アプリケーション）を作成し、認証情報を設定してください。</p>
+                
+                <div class="bg-slate-950 border border-slate-800 rounded p-3 text-xs">
+                    <div class="text-slate-400 mb-1 font-medium">承認済みのリダイレクト URI:</div>
+                    <div class="flex items-center gap-2">
+                        <input type="text" id="drive-redirect-uri" readonly class="flex-1 bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-300 font-mono text-[11px] select-all focus:outline-none">
+                        <button type="button" onclick="copyDriveRedirectUri()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded border border-slate-700 text-xs transition">コピー</button>
+                    </div>
+                    <div class="text-[11px] text-slate-500 mt-1">※Google Cloud ConsoleのOAuthクライアントの「承認済みのリダイレクト URI」に上記を登録してください。</div>
                 </div>
-                <div>
-                    <label id="label-client-secret" class="block text-xs text-slate-400 mb-1">Client Secret</label>
-                    <input type="password" id="oauth-client-secret" required class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500">
+
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Client ID <span class="text-red-400">*</span></label>
+                        <input type="text" id="drive-client-id" placeholder="xxxx.apps.googleusercontent.com" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Client Secret <span class="text-red-400">*</span></label>
+                        <input type="password" id="drive-client-secret" placeholder="Client Secret" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500">
+                    </div>
                 </div>
+
                 <div class="pt-2">
-                    <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2 rounded text-sm transition">認証情報を保存してログイン</button>
+                    <button type="button" id="drive-auth-btn" onclick="startGoogleDriveAuth()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5 rounded text-sm transition flex items-center justify-center gap-2">
+                        <span>Google アカウントで認可する</span>
+                    </button>
                 </div>
-            </form>
+
+                <!-- 手動・高度な設定 -->
+                <div class="border-t border-slate-800 pt-3">
+                    <button type="button" onclick="toggleDriveAdvanced()" class="text-xs text-slate-400 hover:text-slate-300 flex items-center gap-1">
+                        <span id="drive-advanced-arrow">▶</span> 高度な設定（認可コード手動入力 / Refresh Token 直接指定）
+                    </button>
+                    <div id="drive-advanced-panel" class="hidden mt-3 space-y-3 bg-slate-950/60 border border-slate-800/80 rounded p-3">
+                        <div>
+                            <label class="block text-[11px] text-slate-400 mb-1">認可コード または リダイレクトされたURL全体</label>
+                            <div class="flex gap-2">
+                                <input type="text" id="drive-auth-code" placeholder="4/0Axxxx... または http://...?code=..." class="flex-1 bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
+                                <button type="button" onclick="exchangeGoogleDriveCode()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded border border-slate-700 text-xs transition whitespace-nowrap">コードで連携</button>
+                            </div>
+                        </div>
+                        <div class="border-t border-slate-800/60 pt-2">
+                            <label class="block text-[11px] text-slate-400 mb-1">Refresh Token (直接保存する場合)</label>
+                            <div class="flex gap-2">
+                                <input type="password" id="drive-refresh-token" placeholder="1//0xxxx..." class="flex-1 bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
+                                <button type="button" onclick="saveGoogleDriveRefreshToken()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded border border-slate-700 text-xs transition whitespace-nowrap">トークン保存</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="drive-disconnect-section" class="border-t border-slate-800 pt-3 hidden">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-emerald-400">現在連携されています</span>
+                        <button type="button" onclick="disconnectGoogleDrive()" class="text-red-400 hover:text-red-300 border border-red-900/50 hover:border-red-700 px-3 py-1 rounded bg-red-950/20 transition">連携を解除する</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 汎用プロバイダ用コンテナ -->
+            <div id="oauth-generic-container">
+                <p id="oauth-instructions" class="text-xs text-slate-400 mb-5">連携のためには各プラットフォームの開発者ポータルでOAuthアプリを作成し、Client IDとClient Secretを取得する必要があります。</p>
+                <form id="oauth-form" class="space-y-4">
+                    <input type="hidden" id="oauth-provider-id">
+                    <div id="field-client-id-container">
+                        <label id="label-client-id" class="block text-xs text-slate-400 mb-1">Client ID</label>
+                        <input type="text" id="oauth-client-id" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500">
+                    </div>
+                    <div>
+                        <label id="label-client-secret" class="block text-xs text-slate-400 mb-1">Client Secret</label>
+                        <input type="password" id="oauth-client-secret" required class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500">
+                    </div>
+                    <div class="pt-2">
+                        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2 rounded text-sm transition">認証情報を保存してログイン</button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 
@@ -302,7 +393,9 @@
     <!-- JavaScript連携 -->
     <script>
         // markedのオプション設定
-        marked.setOptions({ breaks: true, gfm: true });
+        if (typeof marked !== 'undefined' && marked.setOptions) {
+            marked.setOptions({ breaks: true, gfm: true });
+        }
 
         const chatForm = document.getElementById('chat-form');
         const userInput = document.getElementById('user-input');
@@ -397,8 +490,11 @@
             if (currentAbortController) {
                 currentAbortController.abort();
                 currentAbortController = null;
+                const el = document.getElementById('thinking-indicator');
+                if (el && el.parentNode) el.parentNode.removeChild(el);
                 appendMessage('System', '処理を中断しました。', 'system');
                 document.getElementById('stop-btn').classList.add('hidden');
+                isSending = false;
             }
         }
 
@@ -409,23 +505,41 @@
             saveLlmConfig();
         }
 
+        function toggleApiKeyVisibility() {
+            const input = document.getElementById('llm-api-key');
+            const showIcon = document.getElementById('eye-icon-show');
+            const hideIcon = document.getElementById('eye-icon-hide');
+            if (input.type === 'password') {
+                input.type = 'text';
+                showIcon.classList.add('hidden');
+                hideIcon.classList.remove('hidden');
+            } else {
+                input.type = 'password';
+                showIcon.classList.remove('hidden');
+                hideIcon.classList.add('hidden');
+            }
+        }
+
         function setProviderUI(provider) {
             document.getElementById('llm-provider').value = provider;
             
             const btnGemini = document.getElementById('btn-provider-gemini');
             const btnOpenai = document.getElementById('btn-provider-openai');
             const baseUrlContainer = document.getElementById('llm-base-url-container');
+            const apiKeyContainer = document.getElementById('llm-api-key-container');
             const modelInput = document.getElementById('llm-model');
 
             if (provider === 'gemini') {
                 btnGemini.className = "flex-1 py-1.5 text-xs font-medium rounded-md bg-slate-800 text-slate-200 shadow-sm transition-all border border-slate-700";
                 btnOpenai.className = "flex-1 py-1.5 text-xs font-medium rounded-md text-slate-500 hover:text-slate-300 transition-all";
                 baseUrlContainer.classList.add('hidden');
-                if (modelInput.value === 'local-model') modelInput.value = 'gemini-3.5-flash';
+                apiKeyContainer.classList.add('hidden');
+                if (modelInput.value === 'local-model') modelInput.value = 'gemini-3.8-flash';
             } else {
                 btnOpenai.className = "flex-1 py-1.5 text-xs font-medium rounded-md bg-slate-800 text-slate-200 shadow-sm transition-all border border-slate-700";
                 btnGemini.className = "flex-1 py-1.5 text-xs font-medium rounded-md text-slate-500 hover:text-slate-300 transition-all";
                 baseUrlContainer.classList.remove('hidden');
+                apiKeyContainer.classList.remove('hidden');
                 if (modelInput.value.startsWith('gemini')) modelInput.value = 'local-model';
             }
             markUnverified();
@@ -448,7 +562,8 @@
                     body: JSON.stringify({
                         provider: document.getElementById('llm-provider').value,
                         model: document.getElementById('llm-model').value,
-                        base_url: document.getElementById('llm-base-url').value
+                        base_url: document.getElementById('llm-base-url').value,
+                        api_key: document.getElementById('llm-api-key').value
                     })
                 });
                 const data = await res.json();
@@ -476,26 +591,40 @@
             localStorage.setItem('jarvis_llm_provider', document.getElementById('llm-provider').value);
             localStorage.setItem('jarvis_llm_model', document.getElementById('llm-model').value);
             localStorage.setItem('jarvis_llm_base_url', document.getElementById('llm-base-url').value);
+            localStorage.setItem('jarvis_llm_api_key', document.getElementById('llm-api-key').value);
         }
 
         function loadLlmConfig() {
             const provider = localStorage.getItem('jarvis_llm_provider');
             const model = localStorage.getItem('jarvis_llm_model');
             const baseUrl = localStorage.getItem('jarvis_llm_base_url');
+            const apiKey = localStorage.getItem('jarvis_llm_api_key');
             
             if (provider) {
                 setProviderUI(provider);
                 if (provider === 'openai') {
                     const baseUrlContainer = document.getElementById('llm-base-url-container');
+                    const apiKeyContainer = document.getElementById('llm-api-key-container');
                     baseUrlContainer.classList.remove('hidden');
+                    apiKeyContainer.classList.remove('hidden');
                 }
             }
             if (model) document.getElementById('llm-model').value = model;
             if (baseUrl) document.getElementById('llm-base-url').value = baseUrl;
+            if (apiKey) {
+                document.getElementById('llm-api-key').value = apiKey;
+            } else {
+                fetch('/api/settings').then(r => r.json()).then(data => {
+                    if (data && data.settings && data.settings.LOCAL_LLM_KEY && !document.getElementById('llm-api-key').value) {
+                        document.getElementById('llm-api-key').value = data.settings.LOCAL_LLM_KEY;
+                    }
+                }).catch(() => {});
+            }
         }
 
         userInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
+                if (e.isComposing || e.keyCode === 229) return;
                 e.preventDefault();
                 chatForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
             }
@@ -510,13 +639,111 @@
             userInput.focus();
         }
 
+        // --- Voice Feature ---
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition = null;
+        let isRecording = false;
+
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.lang = 'ja-JP';
+            recognition.interimResults = false;
+            recognition.continuous = false;
+            
+            recognition.onstart = () => {
+                isRecording = true;
+                const btn = document.getElementById('voice-btn');
+                btn.classList.add('text-red-400', 'border-red-500', 'bg-red-950/30');
+                btn.classList.remove('text-slate-400', 'bg-slate-800', 'border-slate-700');
+                document.getElementById('user-input').placeholder = "音声入力中...";
+            };
+            
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                const input = document.getElementById('user-input');
+                input.value = transcript;
+                input.style.height = 'auto';
+                input.style.height = input.scrollHeight + 'px';
+            };
+            
+            recognition.onerror = (event) => {
+                console.error("Speech recognition error", event.error);
+                stopVoiceInput();
+            };
+            
+            recognition.onend = () => {
+                stopVoiceInput();
+                const input = document.getElementById('user-input');
+                if(input.value.trim() !== '') {
+                    // Start thinking indication or just submit
+                    chatForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+                }
+            };
+        }
+
+        function toggleVoiceInput() {
+            if (!SpeechRecognition) {
+                alert("お使いのブラウザは音声入力に対応していません。Google Chrome等をご利用ください。");
+                return;
+            }
+            if (isRecording) {
+                recognition.stop();
+            } else {
+                recognition.start();
+            }
+        }
+
+        function stopVoiceInput() {
+            isRecording = false;
+            const btn = document.getElementById('voice-btn');
+            if (btn) {
+                btn.classList.remove('text-red-400', 'border-red-500', 'bg-red-950/30');
+                btn.classList.add('text-slate-400', 'bg-slate-800', 'border-slate-700');
+            }
+            document.getElementById('user-input').placeholder = "JARVISへ指示を入力... (Shift+Enterで改行)";
+        }
+
+        let lastSpokenText = "";
+
+        function playJarvisVoice(text) {
+            const toggle = document.getElementById('jarvis-voice-toggle');
+            if (!toggle || !toggle.checked) return;
+            
+            // Markdownや記号を除去して読みやすくする
+            const cleanText = text.replace(/[*#`_]/g, '').trim();
+            
+            if (!cleanText || cleanText === lastSpokenText) return;
+            lastSpokenText = cleanText;
+            
+            const utterance = new SpeechSynthesisUtterance(cleanText);
+            utterance.lang = 'ja-JP';
+            utterance.rate = 1.1; 
+            
+            const voices = window.speechSynthesis.getVoices();
+            const jaVoices = voices.filter(v => v.lang.includes('ja'));
+            if (jaVoices.length > 0) {
+                const googleVoice = jaVoices.find(v => v.name.includes('Google'));
+                utterance.voice = googleVoice || jaVoices[0];
+            }
+            
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // ページロード時に声をロードしておく
+        if (window.speechSynthesis) {
+            window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+        }
+
         // 初回ロード時に連携ステータスを取得する処理（モックから実APIへ変更）
         document.addEventListener('DOMContentLoaded', () => {
             loadLlmConfig();
             
             const buttons = document.querySelectorAll('button[onclick^="handleConnect"]');
             buttons.forEach(async (btn) => {
-                const provider = btn.getAttribute('onclick').match(/'([^']+)'/)[1];
+                const onclickVal = btn.getAttribute('onclick') || '';
+                const match = onclickVal.match(/'([^']+)'/);
+                if (!match) return;
+                const provider = match[1];
                 try {
                     const res = await fetch(`/api/oauth/status/${encodeURIComponent(provider)}`);
                     const data = await res.json();
@@ -545,21 +772,52 @@
             // Backend handles history automatically.
         }
 
+        let isSending = false;
+
         async function loadChatHistory() {
+            if (isSending) return;
             try {
                 const res = await fetch('/api/chat/history/jarvis_main_thread');
                 if (res.ok) {
                     const data = await res.json();
-                    if (data.history && data.history.length !== currentHistoryCount) {
-                        currentHistoryCount = data.history.length;
+                    const newHistory = data.history || [];
+                    
+                    if (currentHistoryCount === -1) {
+                        currentHistoryCount = newHistory.length;
                         chatLogs.innerHTML = '';
-                        if (data.history.length === 0) {
+                        if (newHistory.length === 0) {
                             chatLogs.innerHTML = defaultChatLogHTML;
                         } else {
-                            data.history.forEach(h => {
-                                appendMessage(h.sender, h.text, h.type, false);
-                            });
+                            newHistory.forEach(h => appendMessage(h.sender, h.text, h.type, false));
                         }
+                        return;
+                    }
+
+                    if (newHistory.length === 0 && currentHistoryCount !== 0) {
+                        currentHistoryCount = 0;
+                        chatLogs.innerHTML = defaultChatLogHTML;
+                        return;
+                    }
+
+                    if (newHistory.length > currentHistoryCount) {
+                        const newItems = newHistory.slice(currentHistoryCount);
+                        currentHistoryCount = newHistory.length;
+                        const welcomeMsg = chatLogs.querySelector('p');
+                        if (welcomeMsg && welcomeMsg.textContent.includes('システムダッシュボードへようこそ')) {
+                            chatLogs.innerHTML = '';
+                        }
+                        newItems.forEach(h => {
+                            const existingMessages = chatLogs.querySelectorAll('.group');
+                            const lastMsgEl = existingMessages[existingMessages.length - 1];
+                            const lastText = lastMsgEl ? (lastMsgEl.querySelector('.msg-content') || lastMsgEl.querySelector('.markdown-body'))?.innerText?.trim() : null;
+                            if (lastText && lastText === h.text.trim()) {
+                                return;
+                            }
+                            appendMessage(h.sender, h.text, h.type, false);
+                            if (h.type === 'jarvis') {
+                                playJarvisVoice(h.text);
+                            }
+                        });
                     }
                 }
             } catch (e) {
@@ -569,6 +827,7 @@
 
         async function clearUIHistory() {
             chatLogs.innerHTML = defaultChatLogHTML;
+            currentHistoryCount = 0;
             try {
                 await fetch('/api/chat/clear_ui', {
                     method: 'POST',
@@ -617,7 +876,40 @@
 
         async function handleConnect(btn, skillName) {
             try {
-                // 状態確認
+                if (skillName === 'Google Drive') {
+                    document.getElementById('oauth-provider-name').textContent = 'Google Drive';
+                    document.getElementById('oauth-drive-container').classList.remove('hidden');
+                    document.getElementById('oauth-generic-container').classList.add('hidden');
+                    
+                    const redirectInput = document.getElementById('drive-redirect-uri');
+                    redirectInput.value = `${window.location.origin}/api/oauth/google/callback`;
+
+                    const res = await fetch(`/api/oauth/status/${encodeURIComponent(skillName)}`);
+                    const data = await res.json();
+                    
+                    const clientIdInput = document.getElementById('drive-client-id');
+                    if (data.client_id) {
+                        clientIdInput.value = data.client_id;
+                    }
+                    
+                    const disconnectSection = document.getElementById('drive-disconnect-section');
+                    const authBtnText = document.querySelector('#drive-auth-btn span');
+                    if (data.connected) {
+                        disconnectSection.classList.remove('hidden');
+                        if (authBtnText) authBtnText.textContent = 'Google アカウントで再認可する';
+                    } else {
+                        disconnectSection.classList.add('hidden');
+                        if (authBtnText) authBtnText.textContent = 'Google アカウントで認可する';
+                    }
+                    
+                    oauthModal.classList.remove('hidden');
+                    return;
+                }
+
+                // 汎用プロバイダ
+                document.getElementById('oauth-drive-container').classList.add('hidden');
+                document.getElementById('oauth-generic-container').classList.remove('hidden');
+
                 const res = await fetch(`/api/oauth/status/${encodeURIComponent(skillName)}`);
                 const data = await res.json();
                 
@@ -625,9 +917,7 @@
                     if (confirm(`${skillName} は既に連携されています。連携を解除して再設定しますか？`)) {
                         const disconnectRes = await fetch(`/api/oauth/disconnect/${encodeURIComponent(skillName)}`, { method: 'POST' });
                         if (disconnectRes.ok) {
-                            btn.textContent = 'Connect';
-                            btn.classList.remove('text-emerald-400', 'border-emerald-500/50', 'bg-emerald-950/30');
-                            btn.classList.add('text-slate-400', 'hover:text-emerald-400', 'border-slate-700', 'hover:border-emerald-500/50', 'bg-slate-950');
+                            updateProviderButtonDisconnected(skillName);
                             appendMessage('System', `${skillName} の連携を解除しました。`, 'system');
                         } else {
                             alert('連携解除に失敗しました。');
@@ -637,7 +927,6 @@
                 }
                 
                 if (!data.configured) {
-                    // 未設定ならモーダルを開く
                     document.getElementById('oauth-provider-name').textContent = skillName;
                     document.getElementById('oauth-provider-id').value = skillName;
                     document.getElementById('oauth-client-id').value = '';
@@ -665,10 +954,8 @@
                     
                     oauthModal.classList.remove('hidden');
                 } else {
-                    // 設定済みなら認証フローへリダイレクト（今回は簡易的にログイン完了状態にする）
                     btn.textContent = 'Authorizing...';
                     btn.classList.add('text-amber-400');
-                    // 実際はここで location.href = `/api/oauth/login/${skillName}` 等へ飛ばす
                     setTimeout(() => {
                         setButtonConnected(btn);
                         appendMessage('System', `${skillName} のOAuth連携が完了し、ツールが利用可能になりました。`, 'system');
@@ -679,11 +966,188 @@
             }
         }
 
+        function toggleDriveAdvanced() {
+            const panel = document.getElementById('drive-advanced-panel');
+            const arrow = document.getElementById('drive-advanced-arrow');
+            const isHidden = panel.classList.contains('hidden');
+            panel.classList.toggle('hidden', !isHidden);
+            arrow.textContent = isHidden ? '▼' : '▶';
+        }
+
+        function copyDriveRedirectUri() {
+            const input = document.getElementById('drive-redirect-uri');
+            input.select();
+            navigator.clipboard.writeText(input.value);
+            alert('リダイレクトURIをクリップボードにコピーしました。');
+        }
+
+        async function startGoogleDriveAuth() {
+            const clientId = document.getElementById('drive-client-id').value.trim();
+            const clientSecret = document.getElementById('drive-client-secret').value.trim();
+            if (!clientId || !clientSecret) {
+                alert('Client ID と Client Secret を入力してください。');
+                return;
+            }
+            const redirectUri = document.getElementById('drive-redirect-uri').value;
+            
+            try {
+                const saveRes = await fetch('/api/oauth/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        provider: 'Google Drive',
+                        client_id: clientId,
+                        client_secret: clientSecret
+                    })
+                });
+                if (!saveRes.ok) {
+                    alert('認証情報の保存に失敗しました。');
+                    return;
+                }
+
+                const urlRes = await fetch(`/api/oauth/google/auth-url?redirect_uri=${encodeURIComponent(redirectUri)}&client_id=${encodeURIComponent(clientId)}`);
+                const urlData = await urlRes.json();
+                if (!urlRes.ok || !urlData.auth_url) {
+                    alert('認証URLの生成に失敗しました: ' + (urlData.detail || '不明なエラー'));
+                    return;
+                }
+
+                window.open(urlData.auth_url, 'google_auth_window', 'width=650,height=750,menubar=no,toolbar=no');
+                appendMessage('System', 'Google Driveの認可ウィンドウを開きました。認証を完了してください。', 'system');
+            } catch (e) {
+                alert('エラーが発生しました: ' + e.message);
+            }
+        }
+
+        async function exchangeGoogleDriveCode() {
+            let raw = document.getElementById('drive-auth-code').value.trim();
+            if (!raw) {
+                alert('認可コードまたはURLを入力してください。');
+                return;
+            }
+            let code = raw;
+            if (raw.includes('code=')) {
+                try {
+                    const urlObj = new URL(raw);
+                    code = urlObj.searchParams.get('code') || raw;
+                } catch(_) {
+                    const m = raw.match(/code=([^&]+)/);
+                    if (m) code = decodeURIComponent(m[1]);
+                }
+            }
+            const redirectUri = document.getElementById('drive-redirect-uri').value;
+            const clientId = document.getElementById('drive-client-id').value.trim();
+            const clientSecret = document.getElementById('drive-client-secret').value.trim();
+
+            try {
+                const res = await fetch('/api/oauth/google/exchange', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        code: code,
+                        redirect_uri: redirectUri,
+                        client_id: clientId || undefined,
+                        client_secret: clientSecret || undefined
+                    })
+                });
+                if (res.ok) {
+                    closeOauthModal();
+                    updateProviderButtonConnected('Google Drive');
+                    appendMessage('System', 'Google Drive の認可コードからトークンを取得し、連携が完了しました。', 'system');
+                } else {
+                    const err = await res.json();
+                    alert('トークン交換に失敗しました: ' + (err.detail || '不明なエラー'));
+                }
+            } catch (e) {
+                alert('通信エラー: ' + e.message);
+            }
+        }
+
+        async function saveGoogleDriveRefreshToken() {
+            const refreshToken = document.getElementById('drive-refresh-token').value.trim();
+            const clientId = document.getElementById('drive-client-id').value.trim();
+            const clientSecret = document.getElementById('drive-client-secret').value.trim();
+            if (!refreshToken) {
+                alert('Refresh Token を入力してください。');
+                return;
+            }
+            if (!clientId || !clientSecret) {
+                alert('Client ID と Client Secret も併せて入力してください。');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/oauth/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        provider: 'Google Drive',
+                        client_id: clientId,
+                        client_secret: clientSecret,
+                        refresh_token: refreshToken
+                    })
+                });
+                if (res.ok) {
+                    closeOauthModal();
+                    updateProviderButtonConnected('Google Drive');
+                    appendMessage('System', 'Google Drive の Refresh Token を設定し、連携が完了しました。', 'system');
+                } else {
+                    alert('保存に失敗しました。');
+                }
+            } catch (e) {
+                alert('通信エラー: ' + e.message);
+            }
+        }
+
+        async function disconnectGoogleDrive() {
+            if (!confirm('Google Drive の連携を解除しますか？')) return;
+            try {
+                const res = await fetch('/api/oauth/disconnect/Google%20Drive', { method: 'POST' });
+                if (res.ok) {
+                    closeOauthModal();
+                    updateProviderButtonDisconnected('Google Drive');
+                    appendMessage('System', 'Google Drive の連携を解除しました。', 'system');
+                } else {
+                    alert('連携解除に失敗しました。');
+                }
+            } catch (e) {
+                alert('エラーが発生しました。');
+            }
+        }
+
+        function updateProviderButtonConnected(provider) {
+            const buttons = document.querySelectorAll('button[onclick^="handleConnect"]');
+            buttons.forEach(btn => {
+                if (btn.getAttribute('onclick').includes(provider)) {
+                    setButtonConnected(btn);
+                }
+            });
+        }
+
+        function updateProviderButtonDisconnected(provider) {
+            const buttons = document.querySelectorAll('button[onclick^="handleConnect"]');
+            buttons.forEach(btn => {
+                if (btn.getAttribute('onclick').includes(provider)) {
+                    btn.textContent = 'Connect';
+                    btn.classList.remove('text-emerald-400', 'border-emerald-500/50', 'bg-emerald-950/30', 'text-amber-400');
+                    btn.classList.add('text-slate-400', 'hover:text-emerald-400', 'border-slate-700', 'hover:border-emerald-500/50', 'bg-slate-950');
+                }
+            });
+        }
+
+        window.addEventListener('message', (event) => {
+            if (event.data && event.data.type === 'oauth_connected') {
+                const provider = event.data.provider;
+                closeOauthModal();
+                updateProviderButtonConnected(provider);
+                appendMessage('System', `${provider} の認証が完了し、ツールが利用可能になりました。`, 'system');
+            }
+        });
+
         function setButtonConnected(btn) {
             btn.textContent = 'Connected';
             btn.classList.remove('text-amber-400', 'border-amber-500/50', 'text-slate-400', 'hover:text-emerald-400', 'border-slate-700', 'hover:border-emerald-500/50', 'bg-slate-950');
             btn.classList.add('text-emerald-400', 'border-emerald-500/50', 'bg-emerald-950/30');
-            // btn.onclick = null; は解除のためにコメントアウトしてクリックを有効化したままにする
         }
 
         function closeOauthModal() {
@@ -705,17 +1169,9 @@
                 
                 if (res.ok) {
                     closeOauthModal();
-                    // 本来はここでOAuth認可画面へリダイレクトする
                     appendMessage('System', `${provider} の設定を保存しました。認可フローへ移行します...`, 'system');
-                    
-                    // ダミーの認可完了処理
                     setTimeout(() => {
-                        const buttons = document.querySelectorAll('button[onclick^="handleConnect"]');
-                        buttons.forEach(btn => {
-                            if (btn.getAttribute('onclick').includes(provider)) {
-                                setButtonConnected(btn);
-                            }
-                        });
+                        updateProviderButtonConnected(provider);
                         appendMessage('System', `${provider} のOAuth連携が完了し、アクセス権を取得しました。`, 'system');
                     }, 1500);
                 }
@@ -726,22 +1182,50 @@
 
         chatForm.addEventListener('submit', async (e) => {
             e.preventDefault();
+            if (isSending) return;
             const text = userInput.value.trim();
             if (!text) return;
 
             userInput.value = '';
             userInput.style.height = 'auto';
 
+            appendMessage('You', text, 'user');
+
+            const removeThinking = () => {
+                const el = document.getElementById('thinking-indicator');
+                if (el && el.parentNode) el.parentNode.removeChild(el);
+            };
+
+            const showThinking = (msg = "応答を生成中...") => {
+                removeThinking();
+                const div = document.createElement('div');
+                div.id = 'thinking-indicator';
+                div.className = "flex flex-col space-y-1";
+                div.innerHTML = `
+                    <span class="text-xs text-slate-500">JARVIS</span>
+                    <div class="bg-slate-800 text-slate-400 border border-slate-700/50 p-3 rounded-lg max-w-[80%] flex items-center space-x-2">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <span class="text-xs">${msg}</span>
+                    </div>
+                `;
+                chatLogs.appendChild(div);
+                chatLogs.scrollTop = chatLogs.scrollHeight;
+            };
+
+            showThinking("応答を生成中...");
+
             const stopBtn = document.getElementById('stop-btn');
-            stopBtn.classList.remove('hidden');
+            if (stopBtn) stopBtn.classList.remove('hidden');
+            
+            currentAbortController = new AbortController();
+            isSending = true;
 
             try {
-                // LLM設定の取得
                 const provider = document.getElementById('llm-provider').value;
                 const model = document.getElementById('llm-model').value;
                 const baseUrl = document.getElementById('llm-base-url').value;
+                const apiKey = document.getElementById('llm-api-key').value;
 
-                // FastAPIのバックエンドAPIへ送信
                 const res = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -749,17 +1233,94 @@
                         message: text,
                         provider: provider,
                         model: model,
-                        base_url: baseUrl
+                        base_url: baseUrl,
+                        api_key: apiKey,
+                        thread_id: 'jarvis_main_thread'
                     }),
                     signal: currentAbortController.signal
                 });
+
+                if (!res.ok) {
+                    const errText = await res.text();
+                    throw new Error(`サーバーエラー (${res.status}): ${errText || res.statusText}`);
+                }
                 
-                const data = await res.json();
-                appendMessage('JARVIS', data.reply, 'jarvis');
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                let buffer = '';
+                let receivedAny = false;
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+                    
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (!trimmed) continue;
+                        try {
+                            const data = JSON.parse(trimmed);
+                            if (data && data.type === 'ping') {
+                                continue;
+                            }
+                            if (data && data.reply) {
+                                receivedAny = true;
+                                removeThinking();
+                                appendMessage('JARVIS', data.reply, 'jarvis');
+                                playJarvisVoice(data.reply);
+                                
+                                if (!data.done) {
+                                    showThinking("処理を継続中...");
+                                }
+                            }
+                        } catch (e) {
+                            console.warn("Stream line parse warning:", trimmed);
+                        }
+                    }
+                }
+                
+                if (buffer.trim()) {
+                    try {
+                        const data = JSON.parse(buffer.trim());
+                        if (data && data.type !== 'ping' && data.reply) {
+                            receivedAny = true;
+                            removeThinking();
+                            appendMessage('JARVIS', data.reply, 'jarvis');
+                            playJarvisVoice(data.reply);
+                        }
+                    } catch (_) {}
+                }
+                
+                removeThinking();
+                if (!receivedAny) {
+                    appendMessage('JARVIS', '応答がありませんでした。', 'jarvis');
+                }
+                
+                try {
+                    const syncRes = await fetch('/api/chat/history/jarvis_main_thread');
+                    if (syncRes.ok) {
+                        const syncData = await syncRes.json();
+                        if (syncData.history) {
+                            currentHistoryCount = syncData.history.length;
+                        }
+                    }
+                } catch (_) {}
             } catch (err) {
-                appendMessage('System', '通信エラーが発生しました。', 'system');
+                removeThinking();
+                if (err.name !== 'AbortError') {
+                    let errMsg = err.message || '接続に失敗しました';
+                    if (errMsg.includes('504') || errMsg.toLowerCase().includes('timeout')) {
+                        errMsg += ' (タイムアウトが発生しました。LLMの起動状況や接続先URLをご確認ください)';
+                    }
+                    appendMessage('System', `通信エラー: ${errMsg}`, 'system');
+                }
             } finally {
-                stopBtn.classList.add('hidden');
+                removeThinking();
+                isSending = false;
+                if (stopBtn) stopBtn.classList.add('hidden');
             }
         });
 
@@ -779,7 +1340,13 @@
                 contentHTML = `<div class="msg-content whitespace-pre-wrap">${temp.innerHTML}</div>`;
                 editHTML = `<button onclick="editMessage(this)" class="absolute top-1 right-2 opacity-0 group-hover:opacity-100 text-xs text-slate-300 hover:text-white bg-slate-600/80 rounded px-2 py-1 transition-opacity">編集</button>`;
             } else {
-                contentHTML = marked.parse(text);
+                if (typeof marked !== 'undefined' && marked.parse) {
+                    contentHTML = marked.parse(text || "");
+                } else {
+                    const temp = document.createElement('div');
+                    temp.textContent = text || "";
+                    contentHTML = `<div class="whitespace-pre-wrap">${temp.innerHTML}</div>`;
+                }
             }
 
             div.innerHTML = `
