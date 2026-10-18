@@ -14,7 +14,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_ollama import ChatOllama
 
-from core.config import DB_URI, SYSTEM_PROMPT
+from core.config import DB_URI, SYSTEM_PROMPT, resolve_local_url
 from tools.agent_tools import tools
 from routers import chat, oauth, knowledge, settings
 
@@ -34,8 +34,11 @@ async def call_model(state: MessagesState, config: RunnableConfig):
     base_url = config.get("configurable", {}).get("base_url", "")
     configurable_api_key = config.get("configurable", {}).get("api_key")
     api_key = configurable_api_key.strip() if configurable_api_key and str(configurable_api_key).strip() else os.getenv("LOCAL_LLM_KEY", "dummy")
+    llm_timeout = int(os.getenv("LLM_TIMEOUT", "60"))
+
     if provider == "openai":
         url = base_url if base_url else os.getenv("LOCAL_LLM_URL", "http://localhost:8000/v1")
+        url = resolve_local_url(url)
         if "11434" in url and not url.rstrip("/").endswith("/v1"):
             url = url.rstrip("/") + "/v1"
         print(f"[LLM Exec] Using Local LLM ({model_name}) at {url}")
@@ -44,11 +47,12 @@ async def call_model(state: MessagesState, config: RunnableConfig):
             base_url=url,
             api_key=api_key,
             temperature=0,
-            timeout=300,
-            max_retries=2
+            timeout=llm_timeout,
+            max_retries=1
         )
     elif provider == "ollama":
         url = base_url if base_url else os.getenv("LOCAL_LLM_URL", "http://localhost:11434")
+        url = resolve_local_url(url)
         print(f"[LLM Exec] Using Ollama ({model_name}) at {url}")
         client_kwargs = {}
         if configurable_api_key and str(configurable_api_key).strip():
@@ -61,10 +65,11 @@ async def call_model(state: MessagesState, config: RunnableConfig):
         )
     else:
         print(f"[LLM Exec] Using Google Gemini ({model_name})")
-        llm = ChatGoogleGenerativeAI(model=model_name, temperature=0, streaming=True)
+        gemini_model = os.getenv("GEMINI_MODEL", model_name)
+        llm = ChatGoogleGenerativeAI(model=gemini_model, temperature=0, streaming=True, request_timeout=llm_timeout)
         
     filtered_messages = [m for m in messages if m.content != "[UI_CLEAR]"]
-    retry_delays = [5, 12, 25, 30]
+    retry_delays = [3, 8, 15, 20]
     response = None
     for attempt in range(len(retry_delays) + 1):
         try:

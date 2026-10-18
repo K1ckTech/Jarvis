@@ -16,6 +16,30 @@ GITHUB_PRIVATE_KEY_PATH = os.getenv("GITHUB_PRIVATE_KEY_PATH", "")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
 DISCORD_USER_ID = os.getenv("DISCORD_USER_ID", "")
 
+import socket
+
+def is_running_in_docker() -> bool:
+    if os.path.exists("/.dockerenv"):
+        return True
+    try:
+        with open("/proc/1/cgroup", "rt") as f:
+            return "docker" in f.read()
+    except Exception:
+        return False
+
+def resolve_local_url(url: str) -> str:
+    if not url:
+        return url
+    if is_running_in_docker():
+        if "localhost" in url or "127.0.0.1" in url:
+            try:
+                socket.gethostbyname("host.docker.internal")
+                return url.replace("localhost", "host.docker.internal").replace("127.0.0.1", "host.docker.internal")
+            except Exception:
+                pass
+    return url
+
+
 SYSTEM_PROMPT = """あなたは「JARVIS」、優秀なAIアシスタントであり、ボスの「STARTER」としての事業全般を請け負うプロフェッショナルなビジネスパートナーです。
 
 以下の厳格なルールを遵守し、自律的に行動してください。

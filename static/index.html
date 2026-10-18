@@ -1263,6 +1263,9 @@
                         if (!trimmed) continue;
                         try {
                             const data = JSON.parse(trimmed);
+                            if (data && data.type === 'ping') {
+                                continue;
+                            }
                             if (data && data.reply) {
                                 receivedAny = true;
                                 removeThinking();
@@ -1282,7 +1285,7 @@
                 if (buffer.trim()) {
                     try {
                         const data = JSON.parse(buffer.trim());
-                        if (data && data.reply) {
+                        if (data && data.type !== 'ping' && data.reply) {
                             receivedAny = true;
                             removeThinking();
                             appendMessage('JARVIS', data.reply, 'jarvis');
@@ -1308,7 +1311,11 @@
             } catch (err) {
                 removeThinking();
                 if (err.name !== 'AbortError') {
-                    appendMessage('System', `通信エラー: ${err.message || '接続に失敗しました'}`, 'system');
+                    let errMsg = err.message || '接続に失敗しました';
+                    if (errMsg.includes('504') || errMsg.toLowerCase().includes('timeout')) {
+                        errMsg += ' (タイムアウトが発生しました。LLMの起動状況や接続先URLをご確認ください)';
+                    }
+                    appendMessage('System', `通信エラー: ${errMsg}`, 'system');
                 }
             } finally {
                 removeThinking();
