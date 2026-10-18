@@ -14,15 +14,7 @@ load_dotenv()
 DB_URI = os.getenv("DB_URI")
 llm = ChatGoogleGenerativeAI(model="gemini-3.8-flash", temperature=0)
 
-# 2. システムプロンプトとワークフローの定義（agent.pyと同じ）
-SYSTEM_PROMPT = """あなたは「JARVIS」、優秀なAIアシスタントです。
-特にWeb制作やプログラム開発において、以下の厳格なルールを遵守してください。
-1. デザインルール: AIチックなデザイン（普遍的な紫のグラデーション等）は絶対に使用しないこと。普遍的かつ誰が見てもAI生成ではないと思える自然なデザインを心がけること。
-2. コード出力ルール: 特定の指示がないかファイルが変更されている限り、コードは省略せず全文を出力すること。ファイルに一切の編集が加えられていない場合のみ省略可。
-3. コメントルール: 特定の指示がない限り、コメントアウトは極力最低限に抑えること。
-4. 品質ルール: 即席であることを前提としている場合を除き、作成するコードは保守性を担保し、また堅牢性のあるものを作成すること。
-5. 確認ルール: コードを出力する前に、セルフダブルチェックを必ず行うこと。
-"""
+from core.config import SYSTEM_PROMPT
 
 def call_model(state: MessagesState):
     messages = state["messages"]

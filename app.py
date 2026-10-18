@@ -7,14 +7,14 @@ from psycopg_pool import AsyncConnectionPool
 
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
-from langgraph.graph import StateGraph, MessagesState, START
+from langgraph.graph import StateGraph, MessagesState, START, END
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.prebuilt import ToolNode, tools_condition
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_ollama import ChatOllama
 
-from core.config import DB_URI, SYSTEM_PROMPT, resolve_local_url
+from core.config import DB_URI, SYSTEM_PROMPT, resolve_local_url, has_pending_action
 from tools.agent_tools import tools
 from routers import chat, oauth, knowledge, settings
 
@@ -94,13 +94,66 @@ async def call_model(state: MessagesState, config: RunnableConfig):
             raise e
     return {"messages": [response]}
 
+def extract_text(content) -> str:
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, dict):
+        return str(content.get("text", content))
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, dict):
+                if block.get("type") == "text":
+                    parts.append(block.get("text", ""))
+                elif "text" in block:
+                    parts.append(str(block["text"]))
+            elif isinstance(block, str):
+                parts.append(block)
+        return "".join(parts)
+    return str(content)
+
+def route_agent_output(state: MessagesState) -> str:
+    messages = state["messages"]
+    if not messages:
+        return "__end__"
+        
+    last_msg = messages[-1]
+    tool_calls = getattr(last_msg, "tool_calls", None) or (last_msg.get("tool_calls") if isinstance(last_msg, dict) else None)
+    if tool_calls and len(tool_calls) > 0:
+        return "tools"
+        
+    raw_content = getattr(last_msg, "content", None) or (last_msg.get("content") if isinstance(last_msg, dict) else None)
+    text = extract_text(raw_content).strip()
+    
+    auto_count = sum(1 for m in reversed(messages[-8:]) if "[システム自動通知]" in getattr(m, "content", ""))
+    if auto_count < 2 and has_pending_action(text):
+        print(f"[Auto Continue] Pending task detected in agent response without tool call. Snippet: '{text[:60]}...'. Routing to auto_continue.")
+        return "auto_continue"
+        
+    return "__end__"
+
+async def auto_continue(state: MessagesState):
+    prompt = (
+        "[システム自動通知] 前の応答で次の作業・手順の実施を表明していますが、ツール呼び出し（tool_call）が発行されていません。"
+        "タスクはまだ完了していません。途中で返答を終了せず、直ちに必要なツール呼び出しを実行して、指示されたすべてのタスクを最後まで完遂してください。"
+    )
+    return {"messages": [HumanMessage(content=prompt)]}
+
 workflow = StateGraph(MessagesState)
 workflow.add_node("agent", call_model)
 workflow.add_node("tools", ToolNode(tools))
+workflow.add_node("auto_continue", auto_continue)
 
 workflow.add_edge(START, "agent")
-workflow.add_conditional_edges("agent", tools_condition)
+workflow.add_conditional_edges("agent", route_agent_output, {
+    "tools": "tools",
+    "auto_continue": "auto_continue",
+    "__end__": END
+})
 workflow.add_edge("tools", "agent")
+workflow.add_edge("auto_continue", "agent")
 
 pool = None
 app_graph = None
