@@ -31,7 +31,7 @@ def _extract_text(content) -> str:
         return "".join(parts)
     return str(content)
 
-from core.config import resolve_local_url
+from core.config import resolve_local_url, has_pending_action
 
 @router.post("")
 async def chat_endpoint(req: ChatRequest, request: Request):
@@ -83,6 +83,8 @@ async def chat_endpoint(req: ChatRequest, request: Request):
                 elif item_type == "chunk":
                     chunk = item_data
                     for node_name, node_output in chunk.items():
+                        if node_name == "auto_continue":
+                            continue
                         if node_name == "agent":
                             node_msgs = node_output.get("messages", [])
                             for m in node_msgs:
@@ -91,10 +93,11 @@ async def chat_endpoint(req: ChatRequest, request: Request):
                                 text = _extract_text(content).strip()
                                 
                                 if text:
+                                    has_pending = has_pending_action(text)
                                     parts = [p.strip() for p in text.split("---MESSAGE_BREAK---") if p.strip()]
                                     for idx, part in enumerate(parts):
                                         is_last_part = (idx == len(parts) - 1)
-                                        is_done = is_last_part and not bool(tool_calls)
+                                        is_done = is_last_part and not bool(tool_calls) and not has_pending
                                         emitted_any = True
                                         yield (json.dumps({"reply": part, "done": is_done}) + "\n").encode('utf-8')
                                 elif tool_calls:
@@ -184,6 +187,8 @@ async def get_chat_history(thread_id: str, request: Request):
         if m_type == "human":
             if m_content == "[UI_CLEAR]":
                 history = []
+            elif str(m_content).startswith("[システム自動"):
+                continue
             else:
                 history.append({"sender": "You", "text": _extract_text(m_content), "type": "user"})
         elif m_type == "ai":
